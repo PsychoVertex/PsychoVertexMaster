@@ -1,10 +1,19 @@
 import bpy
+from bpy.types import Context
 
 
 class AddMaterialToSelectedFacesOperator(bpy.types.Operator):
     bl_idname = "object.add_mat_sel_faces"
     bl_label = "Add Material to Selected Faces"
     bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context: Context) -> bool:
+        if len(context.selected_objects) > 1 or not context.active_object:
+            return False
+        if context.active_object.data.total_face_sel == 0:
+            return False
+        return True
 
     def execute(self, context):
         ob = bpy.context.active_object

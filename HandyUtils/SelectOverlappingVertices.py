@@ -54,7 +54,7 @@ class SelectOverlappingVerticesOperator(bpy.types.Operator):
     """Tooltip"""
     bl_idname = "mesh.select_overlapping_vertices"
     bl_label = "Overlapping Vertices"
-    bl_options = {'REGISTER', 'UNDO'}
+    bl_options = {'REGISTER', 'UNDO', 'UNDO_GROUPED'}
 
     threshold: bpy.props.FloatProperty(
         name="Distance Factor",

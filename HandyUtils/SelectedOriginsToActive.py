@@ -4,6 +4,7 @@ import bpy
 class SelectedOriginsToActiveOperator(bpy.types.Operator):
     bl_idname = "object.selected_origins_to_active"
     bl_label = "Selected Origins To Active"
+    bl_options = {'REGISTER', 'UNDO', 'UNDO_GROUPED'}
 
     def execute(self, context):
         ctx = bpy.context

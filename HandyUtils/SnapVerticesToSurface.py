@@ -39,7 +39,7 @@ def main(context, x, y, z):
 class SnapVerticesToSurfaceOperator(bpy.types.Operator):
     bl_idname = "mesh.snap_vertices_to_surface"
     bl_label = "Snap Vertices To Surface"
-    bl_options = {'REGISTER', 'UNDO'}
+    bl_options = {'REGISTER', 'UNDO', 'UNDO_GROUPED'}
 
     x_axis: bpy.props.BoolProperty(name="X", default=False)
     y_axis: bpy.props.BoolProperty(name="Y", default=False)

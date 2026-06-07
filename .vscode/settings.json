@@ -1,17 +1,36 @@
 {
-    "[python]": {
-        "editor.defaultFormatter": "ms-python.autopep8"
-    },
-    "pylint.args": [
-        "--disable=C0103",
-        "--disable=C0114",
-        "--disable=C0115",
-        "--disable=C0116",
-        "--disable=C0301",
-        "--disable=C0304",
-        "--disable=E1111",
-        "--disable=E1101",
-        "--disable=W0603",
-    ],
-    "python.analysis.typeCheckingMode": "standard"
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.autopep8"
+  },
+  "pylint.args": [
+    "--disable=C0103",
+    "--disable=C0114",
+    "--disable=C0115",
+    "--disable=C0116",
+    "--disable=C0301",
+    "--disable=C0304",
+    "--disable=E1111",
+    "--disable=E1101",
+    "--disable=W0603",
+    "--disable=W0718",
+    "--disable=C0303",
+    "--disable=I1101",
+    "--disable=W0613",
+    "--disable=W0612",
+  ],
+  "python.analysis.typeCheckingMode": "basic",
+  "python.analysis.diagnosticSeverityOverrides": {
+    "reportInvalidTypeForm": "none",
+    "reportAttributeAccessIssue": "none",
+    "reportArgumentType": "none",
+    "reportOptionalMemberAccess": "none",
+  }
+  // "python.autoComplete.extraPaths": [
+  // "c:\\Users\\MohammadZamanian\\.vscode\\extensions\\fxtd-odyssey.mayapy-1.0.4\\mayaSDK",
+  // "D:/Projects/ProjectFiles/Blender/Addons/blender_autocomplete/4.3"
+  // ],
+  // "python.analysis.extraPaths": [
+  //     "c:\\Users\\MohammadZamanian\\.vscode\\extensions\\fxtd-odyssey.mayapy-1.0.4\\mayaSDK",
+  //     "D:/Projects/ProjectFiles/Blender/Addons/blender_autocomplete/4.3"
+  // ],
 }

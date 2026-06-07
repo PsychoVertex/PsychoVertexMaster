@@ -4,7 +4,7 @@ import bpy
 class SetOriginToSelectionAndRotateOperator(bpy.types.Operator):
     bl_idname = "mesh.set_origin_to_selection_and_rotate"
     bl_label = "Set Origin to Selection And Rotate"
-    bl_options = {"UNDO"}
+    bl_options = {"UNDO", 'UNDO_GROUPED'}
 
     @classmethod
     def poll(cls, context):
