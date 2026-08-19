@@ -8,6 +8,7 @@ from . import SelectOverlappingVertices
 from . import SetOriginToSelection
 from . import SetOriginToSelectionAndRotate
 from . import SnapVerticesToSurface
+from . import RemoveChecker
 
 
 def register():
@@ -20,6 +21,7 @@ def register():
     SetOriginToSelection.register()
     SetOriginToSelectionAndRotate.register()
     SnapVerticesToSurface.register()
+    RemoveChecker.register()
 
 def unregister():
     BatchExport.unregister()
@@ -31,3 +33,4 @@ def unregister():
     SetOriginToSelection.unregister()
     SetOriginToSelectionAndRotate.unregister()
     SnapVerticesToSurface.unregister()
+    RemoveChecker.unregister()
