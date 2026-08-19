@@ -133,6 +133,7 @@ class MZageHandyMenu(bpy.types.Menu):
                     col.label(text="Mesh")
                     if bpy.context.tool_settings.mesh_select_mode[1]:
                         col.operator("mesh.set_edge_flow", text="Set Flow", icon="SPHERECURVE")
+                        col.operator("mesh.remove_checker", text="Remove Checker", icon="X")
                     col.operator("mesh.mark_sharp", text="Mark Sharp", icon="GREASEPENCIL")
                     col.operator("mesh.mark_sharp", text="Clear Sharp", icon="OUTLINER_DATA_GP_LAYER").clear = True
                     if bpy.context.tool_settings.mesh_select_mode[2]:
@@ -286,6 +287,8 @@ class MeshSubMenu(bpy.types.Menu):
         layout.operator("mesh.mark_sharp", text="Mark Sharp", icon="ADD")
         layout.operator("mesh.set_edge_flow", text="Set Flow", icon="SPHERECURVE")
         layout.operator("object.add_mat_sel_faces", icon="MATERIAL")
+        if context.tool_settings.mesh_select_mode[1]:
+            layout.operator("mesh.remove_checker", text="Remove Checker", icon="X")
 
 
 class VertexColorSubMenu(bpy.types.Menu):
