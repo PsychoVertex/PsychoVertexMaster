@@ -1,7 +1,6 @@
 import colorsys
 import bpy
 from bpy.types import Operator, Object
-import colorama
 import gpu
 from gpu_extras.batch import batch_for_shader
 from gpu.state import depth_test_set, blend_set
