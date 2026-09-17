@@ -15,11 +15,11 @@ from . import CreateEmptyParent
 from . import Preferences
 
 bl_info = {
-    "name": "PsychoVertex Pipeline Addons",
+    "name": "PsychoVertexMaster",
     "category": "3D View",
     "author": "Mohammad Zamanian",
     "location": "3D View > 'W' and 'D' keymaps",
-    "version": (1, 2, 1),
+    "version": (1, 2, 2),
     "blender": (3, 0, 0),
 }
 

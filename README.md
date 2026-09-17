@@ -403,7 +403,7 @@ Children inside collections that disable selection are omitted, keeping protecte
 
 ## Preferences
 
-Open **Edit → Preferences → Add-ons → PsychoVertex Pipeline Addons**.
+Open **Edit → Preferences → Add-ons → PsychoVertexMaster**.
 
 | Mode | Experience |
 | --- | --- |
@@ -419,7 +419,7 @@ Open **Edit → Preferences → Add-ons → PsychoVertex Pipeline Addons**.
 3. Open Blender.
 4. Go to **Edit → Preferences → Add-ons**.
 5. Choose **Install from Disk** and select the ZIP.
-6. Enable **PsychoVertex Pipeline Addons**.
+6. Enable **PsychoVertexMaster**.
 7. Move your cursor over a 3D View and press <kbd>D</kbd> or <kbd>W</kbd>.
 
 ### Updating
