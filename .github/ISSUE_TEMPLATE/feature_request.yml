@@ -1,0 +1,38 @@
+name: Feature request
+description: Suggest a useful workflow improvement for PsychoVertexMaster
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for sharing an idea. Focus on the Blender workflow or repeated task this would improve.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What workflow problem would this solve?
+      description: Describe the slow, repetitive, or awkward part of your current workflow.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Explain what the tool should do and how you would expect to use it.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe existing Blender tools, shortcuts, or add-ons you currently use instead.
+  - type: input
+    id: blender-version
+    attributes:
+      label: Blender version
+      placeholder: "Example: Blender 4.3.2"
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add mockups, screenshots, or examples if useful.
+

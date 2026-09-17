@@ -1,0 +1,62 @@
+name: Bug report
+description: Report a reproducible problem with PsychoVertexMaster
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping improve PsychoVertexMaster. Please include the smallest reproducible example you can.
+  - type: input
+    id: blender-version
+    attributes:
+      label: Blender version
+      placeholder: "Example: Blender 4.3.2"
+    validations:
+      required: true
+  - type: input
+    id: addon-version
+    attributes:
+      label: PsychoVertexMaster version
+      placeholder: "Example: 1.2.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: operating-system
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Explain what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Select...
+        2. Press...
+        3. See...
+    validations:
+      required: true
+  - type: textarea
+    id: console
+    attributes:
+      label: Console output
+      description: Paste relevant Blender console errors or logs here.
+      render: shell
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add screenshots, sample files, or anything else that may help.
+
