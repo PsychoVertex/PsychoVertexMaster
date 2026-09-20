@@ -12,6 +12,8 @@ build/
 develop-eggs/
 dist/
 release/
+Lightmapping/NativePostprocessor/build/
+backups/
 downloads/
 eggs/
 .eggs/
