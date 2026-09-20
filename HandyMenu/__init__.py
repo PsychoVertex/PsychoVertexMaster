@@ -184,6 +184,7 @@ class MZageHandyMenu(bpy.types.Menu):
                     col.operator("mesh.set_origin_to_selection", text="Origin to Selected", icon="OBJECT_ORIGIN")
                     col.operator("mesh.set_origin_to_selection_and_rotate", text="Fix Rotation", icon="OBJECT_ORIGIN")
                     col.operator("collision.add_box_collision_to_selected", icon="SHADING_BBOX")
+                    col.operator("collision.add_convex_collision_to_selected", icon="MESH_ICOSPHERE")
                     col.operator("mesh.get_edge_length", icon="DRIVER_DISTANCE")
                     col.operator("mesh.get_edges_angle", icon="DRIVER_ROTATIONAL_DIFFERENCE")
                     # col.operator("mesh.snap_vertices_to_surface", icon="MOD_SHRINKWRAP")
@@ -218,7 +219,11 @@ class MZageHandyMenu(bpy.types.Menu):
                     col = row.column()
                     col.label(text="Lightmapping")
                     col.operator("lightmap.unpack_collections", icon="ACTION")
+                    col.operator("lightmap.unpack_active_collection", icon="OUTLINER_COLLECTION")
                     col.operator("lightmap.bake_batch", icon="LIGHT_DATA")
+                    col.operator("lightmap.denoise_batch", icon="IMAGE_DATA")
+                    col.operator("lightmap.replace_fillers", icon="DUPLICATE")
+                    col.operator("lightmap.clear_filler_replacements", icon="TRASH")
                     col.operator("lightmap.clear_lightmapping_stuff", icon="REMOVE")
 
                     col = row.column()
@@ -256,7 +261,11 @@ class MZageHandyMenu(bpy.types.Menu):
                     col = row.column()
                     col.label(text="Lightmapping")
                     col.operator("lightmap.unpack_collections", icon="ACTION")
+                    col.operator("lightmap.unpack_active_collection", icon="OUTLINER_COLLECTION")
                     col.operator("lightmap.bake_batch", icon="LIGHT_DATA")
+                    col.operator("lightmap.denoise_batch", icon="IMAGE_DATA")
+                    col.operator("lightmap.replace_fillers", icon="DUPLICATE")
+                    col.operator("lightmap.clear_filler_replacements", icon="TRASH")
                     col.operator("lightmap.clear_lightmapping_stuff", icon="REMOVE")
 
 
@@ -359,9 +368,14 @@ class LightmappingSubMenu(bpy.types.Menu):
             layout.operator("lightmap.set_scale", icon="FIXED_SIZE")
             layout.operator("lightmap.scaled_uv_packing", icon="UV")
         else:
-            layout.operator("lightmap.unpack_collections", icon="ACTION")
-            layout.operator("lightmap.clear_lightmapping_stuff", icon="REMOVE")
-            layout.operator("lightmap.bake_batch", icon="LIGHT_DATA")
+            layout.operator("lightmap.unpack_collections", text="Unpack All", icon="ACTION")
+            layout.operator("lightmap.clear_lightmapping_stuff", text="Clear", icon="REMOVE")
+            layout.operator("lightmap.bake_batch", text="Bake", icon="LIGHT_DATA")
+            layout.operator("lightmap.denoise_batch", text="Denoise", icon="IMAGE_DATA")
+            layout.operator("lightmap.clear_filler_replacements", text="Restore Fillers", icon="LOOP_BACK")
+            layout.operator("lightmap.replace_fillers", text="Replace Fillers", icon="DUPLICATE")
+            layout.operator("lightmap.unpack_active_collection", text="Unpack Active", icon="OUTLINER_COLLECTION")
+            layout.operator("lightmap.repack_active_batch", text="Repack Active", icon="UV")
 
 
 class UtilsSubMenu(bpy.types.Menu):
@@ -375,6 +389,7 @@ class UtilsSubMenu(bpy.types.Menu):
         layout.operator("mesh.get_edge_length", icon="DRIVER_DISTANCE")
         layout.operator("mesh.get_edges_angle", icon="DRIVER_ROTATIONAL_DIFFERENCE")
         layout.operator("collision.add_box_collision_to_selected", icon="SHADING_BBOX")
+        layout.operator("collision.add_convex_collision_to_selected", icon="MESH_ICOSPHERE")
         # layout.operator("mesh.snap_vertices_to_surface", icon="MOD_SHRINKWRAP")
 
 # -----------------------------
@@ -408,6 +423,8 @@ class ObjectModeUtilsSubMenu(bpy.types.Menu):
         layout.operator("object.make_links_data", text="Copy Modifiers From Active", icon="MODIFIER").type = "MODIFIERS"
         layout.operator("object.make_links_data", text="Copy Materials From Active", icon="MATERIAL").type = "MATERIAL"
         layout.operator("object.selected_origins_to_active", text="Set Origins To Active", icon="TRANSFORM_ORIGINS")
+        layout.operator("object.add_active_in_place_of_selected", icon="DUPLICATE")
+        layout.operator("object.replace_selected_with_active", icon="FILE_REFRESH")
 
 
 class ExportSubMenu(bpy.types.Menu):
