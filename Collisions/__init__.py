@@ -143,6 +143,87 @@ class AddBoxCollisionToSelectedOperator(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class AddConvexCollisionToSelectedOperator(bpy.types.Operator):
+    bl_idname = "collision.add_convex_collision_to_selected"
+    bl_label = "Add Convex Collision"
+    bl_description = (
+        "Create a strictly convex UE5 UCX collision mesh from the selected vertices "
+        "and restore the original mesh selection and Edit Mode"
+    )
+    bl_options = {'REGISTER', 'UNDO', 'UNDO_GROUPED'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'EDIT_MESH' and context.edit_object is not None
+
+    def execute(self, context):
+        source = context.edit_object
+        source_bm = bmesh.from_edit_mesh(source.data)
+        points = [source.matrix_world @ vert.co for vert in source_bm.verts if vert.select]
+        if len(points) < 4:
+            self.report({'ERROR'}, "Select at least 4 vertices enclosing a 3D volume")
+            return {'CANCELLED'}
+
+        hull_bm = bmesh.new()
+        try:
+            hull_verts = [hull_bm.verts.new(point) for point in points]
+            bmesh.ops.remove_doubles(hull_bm, verts=hull_verts, dist=1e-6)
+            if len(hull_bm.verts) < 4:
+                self.report({'ERROR'}, "The selection needs at least 4 unique vertices")
+                return {'CANCELLED'}
+
+            result = bmesh.ops.convex_hull(
+                hull_bm,
+                input=list(hull_bm.verts),
+                use_existing_faces=False,
+            )
+            discard = set(result.get("geom_interior", ()))
+            discard.update(result.get("geom_unused", ()))
+            discard.update(result.get("geom_holes", ()))
+            if discard:
+                bmesh.ops.delete(hull_bm, geom=list(discard), context='VERTS')
+
+            if len(hull_bm.faces) < 4 or abs(hull_bm.calc_volume(signed=True)) <= 1e-12:
+                self.report({'ERROR'}, "Selected vertices are coplanar or do not enclose a valid volume")
+                return {'CANCELLED'}
+
+            bmesh.ops.recalc_face_normals(hull_bm, faces=list(hull_bm.faces))
+
+            index = 0
+            while True:
+                collision_name = f"UCX_{source.name}_{index:02d}"
+                if bpy.data.objects.get(collision_name) is None:
+                    break
+                index += 1
+
+            bpy.ops.object.mode_set(mode='OBJECT')
+            collision_mesh = bpy.data.meshes.new(collision_name)
+            hull_bm.to_mesh(collision_mesh)
+            collision_mesh.update()
+            collision = bpy.data.objects.new(collision_name, collision_mesh)
+            context.collection.objects.link(collision)
+            collision.users_collection[0].objects.unlink(collision)
+            source.users_collection[0].objects.link(collision)
+            collision.parent = source
+            collision.matrix_parent_inverse = source.matrix_world.inverted()
+
+            show_collisions = context.scene.display_collisions
+            collision.display_type = 'SOLID' if show_collisions else 'WIRE'
+            collision.show_wire = show_collisions
+            collision_mesh.materials.clear()
+            material = bpy.data.materials.get("MI_Collision")
+            if material is not None:
+                collision_mesh.materials.append(material)
+
+            bpy.ops.object.select_all(action='DESELECT')
+            source.select_set(True)
+            context.view_layer.objects.active = source
+            bpy.ops.object.mode_set(mode='EDIT')
+            return {'FINISHED'}
+        finally:
+            hull_bm.free()
+
+
 def OnDisplayCollisionsChanged(self, context: bpy.types.Context):
     val = self.display_collisions
     for name, obj in bpy.data.objects.items():
@@ -160,6 +241,7 @@ def InitDisplayCollisions(dummy):
 
 def register():
     bpy.utils.register_class(AddBoxCollisionToSelectedOperator)
+    bpy.utils.register_class(AddConvexCollisionToSelectedOperator)
 
     bpy.types.Scene.display_collisions = bpy.props.BoolProperty(
         name="Display Collisions",
@@ -170,6 +252,7 @@ def register():
 
 
 def unregister():
+    bpy.utils.unregister_class(AddConvexCollisionToSelectedOperator)
     bpy.utils.unregister_class(AddBoxCollisionToSelectedOperator)
 
     del bpy.types.Scene.display_collisions
