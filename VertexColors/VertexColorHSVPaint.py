@@ -1,6 +1,7 @@
 import colorsys
 import bpy
-from bpy.types import Operator, Object
+import bmesh
+from bpy.types import Operator
 import gpu
 from gpu_extras.batch import batch_for_shader
 from gpu.state import depth_test_set, blend_set
@@ -141,59 +142,45 @@ class VertexColorHSVPaintOperator(Operator):
         r, g, b = colorsys.hsv_to_rgb(hue, sat, self.value)
         new_color = (r, g, b, 1.0)
 
-        # Save original active object
-        original_active: Object | None = context.view_layer.objects.active
-        if original_active:
-            original_active.select_set(True)
-
         ts = context.tool_settings
-        selected_objs = [obj for obj in context.selected_objects if obj.type == 'MESH' and obj.mode == 'EDIT']
+        selected_objs = [obj for obj in getattr(context, "objects_in_mode_unique_data", ()) if obj.type == 'MESH']
 
-        obj: Object
         for obj in selected_objs:
-            context.view_layer.objects.active = obj  # Make this object active
-            bpy.ops.object.mode_set(mode="OBJECT")
-
-            mesh = obj.data
+            bm = bmesh.from_edit_mesh(obj.data)
             color_attribute = get_active_color_attribute(obj)
             if not color_attribute:
-                color_attribute = obj.data.color_attributes.new('Color', 'BYTE_COLOR', 'CORNER')
-            print(color_attribute.domain, ts.mesh_select_mode)
-            # POINT domain
-            if color_attribute.domain == "POINT":
-                for v in mesh.vertices:
+                color_layer = bm.loops.layers.color.get('Color') or bm.loops.layers.color.new('Color')
+                domain = "CORNER"
+            else:
+                domain = color_attribute.domain
+
+            if domain == "POINT":
+                layers = bm.verts.layers.float_color if color_attribute.data_type == 'FLOAT_COLOR' else bm.verts.layers.color
+                color_layer = layers.get(color_attribute.name)
+                if not color_layer:
+                    continue
+                for v in bm.verts:
                     if v.select:
-                        color_attribute.data[v.index].color_srgb = new_color
-            # CORNER domain
-            elif color_attribute.domain == "CORNER":
+                        v[color_layer] = new_color
+            elif domain == "CORNER":
+                if color_attribute:
+                    layers = bm.loops.layers.float_color if color_attribute.data_type == 'FLOAT_COLOR' else bm.loops.layers.color
+                    color_layer = layers.get(color_attribute.name)
+                    if not color_layer:
+                        continue
                 select_mode = ts.mesh_select_mode
-                loops = mesh.loops
                 affected_loops = set()
-                if select_mode[2]:  # Face select
-                    for poly in mesh.polygons:
-                        if poly.select:
-                            affected_loops.update(poly.loop_indices)
-                elif select_mode[1]:  # Edge select
-                    selected_verts = {v for e in mesh.edges if e.select for v in e.vertices}
-                    for poly in mesh.polygons:
-                        for li in poly.loop_indices:
-                            if loops[li].vertex_index in selected_verts:
-                                affected_loops.add(li)
-                elif select_mode[0]:  # Vertex select
-                    selected_verts = {v.index for v in mesh.vertices if v.select}
-                    for poly in mesh.polygons:
-                        for li in poly.loop_indices:
-                            if loops[li].vertex_index in selected_verts:
-                                affected_loops.add(li)
-                data = color_attribute.data
-                for li in affected_loops:
-                    if li < len(data):  # safety check
-                        data[li].color_srgb = new_color
+                if select_mode[2]:
+                    affected_loops.update(loop for face in bm.faces if face.select for loop in face.loops)
+                elif select_mode[1]:
+                    selected_verts = {vert for edge in bm.edges if edge.select for vert in edge.verts}
+                    affected_loops.update(loop for face in bm.faces for loop in face.loops if loop.vert in selected_verts)
+                elif select_mode[0]:
+                    affected_loops.update(loop for face in bm.faces for loop in face.loops if loop.vert.select)
+                for loop in affected_loops:
+                    loop[color_layer] = new_color
 
-            bpy.ops.object.mode_set(mode="EDIT")
-
-        # Restore original active object
-        context.view_layer.objects.active = original_active
+            bmesh.update_edit_mesh(obj.data, loop_triangles=False)
 
 
 def register():
