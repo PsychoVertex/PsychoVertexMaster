@@ -9,6 +9,7 @@ from . import SetOriginToSelection
 from . import SetOriginToSelectionAndRotate
 from . import SnapVerticesToSurface
 from . import RemoveChecker
+from . import ActiveInPlaceOfSelected
 
 
 def register():
@@ -22,6 +23,7 @@ def register():
     SetOriginToSelectionAndRotate.register()
     SnapVerticesToSurface.register()
     RemoveChecker.register()
+    ActiveInPlaceOfSelected.register()
 
 def unregister():
     BatchExport.unregister()
@@ -34,3 +36,4 @@ def unregister():
     SetOriginToSelectionAndRotate.unregister()
     SnapVerticesToSurface.unregister()
     RemoveChecker.unregister()
+    ActiveInPlaceOfSelected.unregister()
