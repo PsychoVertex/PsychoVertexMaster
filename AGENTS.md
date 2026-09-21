@@ -10,12 +10,17 @@ Keep changes small and compatible with Blender's Python API. Do not build or lau
 
 - `Lightmapping/__init__.py`: UV scaling/packing, collection realization and batching, baking, denoising, material integration, lighting preview, and cleanup.
 - `Lightmapping/Denoisers.py`: polymorphic denoising backends, external-process lifecycle, full-resolution pixel validation, temporary image conversion, and shared atomic EXR writing.
-- `Preferences.py`: persistent add-on settings, including external OIDN and OptiX executable paths.
+- `Preferences.py`: persistent add-on settings, external OIDN/OptiX executable paths, and fixed-source denoiser download/install operators.
 - `Pipeline.py`: modal task runner used by `UnpackCollections` and `BakeBatch`. It gives every task an announcement/redraw tick and supports item-level header and progress updates through `set_pipeline_detail(text, current, total)`.
 - `HandyMenu/__init__.py`: exposes lightmapping operators in edit/object mode menus.
 - `UvTools/__init__.py`: general UV-layer utilities; related but separate from the lightmapping packer.
 - `HandyUtils/BlenderToUnreal.py`: configures Unreal/BFU lightmap export settings; do not confuse this with the custom baked-lightmap workflow.
+- `UNREAL_ENGINE_ASSETS_EXPORTER.md`: audited technical contract for Unreal Engine Assets Exporter/BFU 4.4.3, including its pipeline, RNA properties, enum values, generated files, Unreal importer, and PVM integration risks.
 - Root `__init__.py`: module registration order and add-on metadata.
+
+## Unreal Export Integration
+
+Before analyzing or modifying any PsychoVertexMaster code related to Unreal export, BFU/Blender for Unreal, `HandyUtils/BlenderToUnreal.py`, Unreal import metadata, collision/material/Nanite/LOD settings, or lightmap export settings, read `UNREAL_ENGINE_ASSETS_EXPORTER.md` completely. Treat its documented BFU property names and enum identifiers as an external versioned API contract. If installed BFU behavior or schema has changed, update that reference in the same change.
 
 ## Lightmapping Workflow
 
@@ -55,7 +60,8 @@ Treat these names and assumptions as a file-format/API contract. If changing one
 - Baking requires Cycles settings and the scene's configured `cycles.bake_type`.
 - Denoisers live in `Lightmapping/Denoisers.py` behind `DenoiserBackend` and `DenoiseContext`; backend selection belongs to `DenoiseBatch`, never `BakeBatch`. Available backends are None, self-contained Integrated OIDN, external OIDN `RTLightmap`, and external OptiX. `LIGHTMAP_OIDN` is the default. External failures cancel without replacing an existing valid lightmap.
 - Denoising rebuilds light-baked texel coverage from the current `LightMap` UVs, clears prior bake gutters, and applies a user-sized final-resolution margin either before or after denoising. The user may denoise before downsampling or downsample first; resizing uses premultiplied filtering.
-- Lightmap OIDN expects Intel Open Image Denoise's `oidnDenoise.exe -f RTLightmap -hdr`; the current OptiX adapter expects Declan Russell's legacy `Denoiser.exe -i ... -o ...`. NVIDIA's SDK sample is normally named `optixDenoiser.exe` and has a different CLI, so it is not interchangeable without updating the adapter. Paths are stored in add-on preferences; executables are user-installed and are not bundled.
+- Lightmap OIDN expects Intel Open Image Denoise's `oidnDenoise.exe -f RTLightmap -hdr`; the current OptiX adapter expects Declan Russell's legacy `Denoiser.exe -i ... -o ...`. NVIDIA's SDK sample is normally named `optixDenoiser.exe` and has a different CLI, so it is not interchangeable without updating the adapter. Custom paths are stored in add-on preferences. When blank, resolution falls back to add-on-local downloads at `denoisers/oidn-2.5.1.x64.windows/bin/oidnDenoise.exe` and `denoisers/Denoiser.exe`.
+- Preference download buttons use fixed upstream release URLs. OIDN must retain its complete extracted distribution because `oidnDenoise.exe` depends on adjacent libraries; OptiX is a standalone executable. Successful downloads update the corresponding preference path. Download failures must cancel with an actionable report and must not change the saved path.
 - `backups/` is a root-level, Git-ignored local safety folder and must not be included in release archives. When the user requests a pre-change backup, use a timestamped filename and record original path, timezone-aware timestamp, reason, upcoming action, and current Git hash in `backups/details.json`.
 - `ShaderNodeBsdfRayPortal` requires a Blender version that provides the Ray Portal node, despite the older minimum version in `bl_info`.
 

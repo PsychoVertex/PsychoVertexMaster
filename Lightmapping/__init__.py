@@ -1593,16 +1593,12 @@ class DenoiseBatch(PipelineOperator):
             margin_box.label(text="Denoise island pixels, then dilate the result.", icon='INFO')
         prefs = Preferences.get()
         if self.denoiser == 'LIGHTMAP_OIDN':
-            path = prefs.oidn_path.strip() if prefs else ""
-            if not path:
-                layout.label(text="Set oidnDenoise.exe in add-on preferences", icon='ERROR')
-            elif not os.path.isfile(bpy.path.abspath(path)):
+            path = Preferences.get_oidn_path(prefs)
+            if not os.path.isfile(bpy.path.abspath(path)):
                 layout.label(text="Configured oidnDenoise.exe was not found", icon='ERROR')
         elif self.denoiser == 'OPTIX':
-            path = prefs.optix_path.strip() if prefs else ""
-            if not path:
-                layout.label(text="Set Denoiser.exe in add-on preferences", icon='ERROR')
-            elif not os.path.isfile(bpy.path.abspath(path)):
+            path = Preferences.get_optix_path(prefs)
+            if not os.path.isfile(bpy.path.abspath(path)):
                 layout.label(text="Configured Denoiser.exe was not found", icon='ERROR')
 
     def validate(self, context: Context, validate_settings=True):
@@ -1726,8 +1722,8 @@ class DenoiseBatch(PipelineOperator):
             scene=context.scene,
             report=self.report,
             source_pixels=self._source_pixels,
-            oidn_path=prefs.oidn_path if prefs else "",
-            optix_path=prefs.optix_path if prefs else "",
+            oidn_path=Preferences.get_oidn_path(prefs),
+            optix_path=Preferences.get_optix_path(prefs),
         )
         self._backend = create_backend(self.denoiser, denoise_context)
         error = self._backend.validate()

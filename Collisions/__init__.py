@@ -1,8 +1,51 @@
 import bpy
 import bmesh
+import json
 import numpy as np
 from mathutils import Vector, Matrix
 from bpy.app.handlers import persistent
+
+
+def _current_collision_source_points(context):
+    is_edit_mode = context.mode == 'EDIT_MESH'
+    source = context.edit_object if is_edit_mode else context.active_object
+    if source is None or source.type != 'MESH':
+        return None, [], is_edit_mode
+
+    if is_edit_mode:
+        source_bm = bmesh.from_edit_mesh(source.data)
+        points = [source.matrix_world @ vert.co for vert in source_bm.verts if vert.select]
+    else:
+        points = [source.matrix_world @ vert.co for vert in source.data.vertices]
+    return source, points, is_edit_mode
+
+
+def _capture_collision_input(operator, context):
+    source, points, is_edit_mode = _current_collision_source_points(context)
+    operator.source_name = source.name if source is not None else ""
+    operator.source_points = json.dumps([list(point) for point in points])
+    operator.started_in_edit_mode = is_edit_mode
+
+
+def _collision_source_points(operator, context):
+    if not operator.source_name:
+        _capture_collision_input(operator, context)
+    source = bpy.data.objects.get(operator.source_name)
+    points = [Vector(point) for point in json.loads(operator.source_points)]
+    return source, points, operator.started_in_edit_mode
+
+
+def _restore_collision_source(context, source, edit_mode):
+    bpy.ops.object.select_all(action='DESELECT')
+    source.select_set(True)
+    context.view_layer.objects.active = source
+    if edit_mode:
+        bpy.ops.object.mode_set(mode='EDIT')
+
+
+def _collision_poll(context):
+    source = context.edit_object if context.mode == 'EDIT_MESH' else context.active_object
+    return context.mode in {'OBJECT', 'EDIT_MESH'} and source is not None and source.type == 'MESH'
 
 
 class AddBoxCollisionToSelectedOperator(bpy.types.Operator):
@@ -13,7 +56,11 @@ class AddBoxCollisionToSelectedOperator(bpy.types.Operator):
         "using PCA, with a small configurable offset. The collision box is created "
         "as a separate object and the original mesh selection and edit mode are restored."
     )
-    bl_options = {'REGISTER', 'UNDO', 'UNDO_GROUPED'}
+    bl_options = {'REGISTER', 'UNDO'}
+
+    source_name: bpy.props.StringProperty(options={'HIDDEN', 'SKIP_SAVE'})
+    source_points: bpy.props.StringProperty(options={'HIDDEN', 'SKIP_SAVE'})
+    started_in_edit_mode: bpy.props.BoolProperty(options={'HIDDEN', 'SKIP_SAVE'})
 
     offset: bpy.props.FloatProperty(
         name="Offset",
@@ -23,23 +70,18 @@ class AddBoxCollisionToSelectedOperator(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return (
-            context.mode == 'EDIT_MESH'
-            and context.edit_object is not None
-        )
+        return _collision_poll(context)
+
+    def invoke(self, context, event):
+        _capture_collision_input(self, context)
+        return self.execute(context)
 
     def execute(self, context):
         offset = Vector((self.offset, self.offset, self.offset))
 
-        obj = context.edit_object
-        mesh = obj.data
-
-        bm = bmesh.from_edit_mesh(mesh)
-        bm.verts.ensure_lookup_table()
-
-        verts = [obj.matrix_world @ v.co for v in bm.verts if v.select]
+        obj, verts, was_edit_mode = _collision_source_points(self, context)
         if len(verts) < 3:
-            self.report({'ERROR'}, "Select at least 3 vertices")
+            self.report({'ERROR'}, "Select at least 3 vertices, or use a mesh with at least 3 vertices")
             return {'CANCELLED'}
 
         # Convert to numpy
@@ -90,8 +132,8 @@ class AddBoxCollisionToSelectedOperator(bpy.types.Operator):
             confidence > ROTATION_CONFIDENCE
         )
 
-        # Switch to Object Mode to create the box
-        bpy.ops.object.mode_set(mode='OBJECT')
+        if was_edit_mode:
+            bpy.ops.object.mode_set(mode='OBJECT')
 
         bpy.ops.mesh.primitive_cube_add(size=1)
         box = context.active_object
@@ -134,13 +176,176 @@ class AddBoxCollisionToSelectedOperator(bpy.types.Operator):
         box.data.materials.clear()
         box.data.materials.append(bpy.data.materials.get("MI_Collision"))
 
-        # Restore original selection and edit mode
-        bpy.ops.object.select_all(action='DESELECT')
-        obj.select_set(True)
-        context.view_layer.objects.active = obj
-        bpy.ops.object.mode_set(mode='EDIT')
+        _restore_collision_source(context, obj, was_edit_mode)
 
         return {'FINISHED'}
+
+
+class AddSphereCollisionToSelectedOperator(bpy.types.Operator):
+    bl_idname = "collision.add_sphere_collision_to_selected"
+    bl_label = "Add Sphere Collision"
+    bl_description = (
+        "Create a spherical UE5 USP collision mesh fitted to the selected vertices "
+        "with a configurable offset, then restore the original mesh selection and Edit Mode"
+    )
+    bl_options = {'REGISTER', 'UNDO'}
+
+    source_name: bpy.props.StringProperty(options={'HIDDEN', 'SKIP_SAVE'})
+    source_points: bpy.props.StringProperty(options={'HIDDEN', 'SKIP_SAVE'})
+    started_in_edit_mode: bpy.props.BoolProperty(options={'HIDDEN', 'SKIP_SAVE'})
+
+    offset: bpy.props.FloatProperty(
+        name="Offset",
+        description="Extra padding added to the collision sphere radius",
+        default=0.02,
+        min=0.0,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return _collision_poll(context)
+
+    def invoke(self, context, event):
+        _capture_collision_input(self, context)
+        return self.execute(context)
+
+    def execute(self, context):
+        source, points, was_edit_mode = _collision_source_points(self, context)
+        if len(points) < 2:
+            self.report({'ERROR'}, "Select at least 2 vertices, or use a mesh with at least 2 vertices")
+            return {'CANCELLED'}
+
+        center = sum(points, Vector((0.0, 0.0, 0.0))) / len(points)
+        radius = max((point - center).length for point in points) + self.offset
+        if radius <= 0.0:
+            self.report({'ERROR'}, "Selected vertices do not define a valid sphere")
+            return {'CANCELLED'}
+
+        if was_edit_mode:
+            bpy.ops.object.mode_set(mode='OBJECT')
+        bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=1.0, location=center)
+        sphere = context.active_object
+        sphere.name = source.name + "_Collision"
+        sphere.scale = Vector((radius, radius, radius))
+
+        bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+        sphere.users_collection[0].objects.unlink(sphere)
+        source.users_collection[0].objects.link(sphere)
+
+        source.select_set(True)
+        context.view_layer.objects.active = source
+        bpy.ops.object.converttospherecollision()
+
+        show_collisions = context.scene.display_collisions
+        sphere.display_type = 'SOLID' if show_collisions else 'WIRE'
+        sphere.show_wire = show_collisions
+        sphere.data.materials.clear()
+        material = bpy.data.materials.get("MI_Collision")
+        if material is not None:
+            sphere.data.materials.append(material)
+
+        _restore_collision_source(context, source, was_edit_mode)
+        return {'FINISHED'}
+
+
+class AddCapsuleCollisionToSelectedOperator(bpy.types.Operator):
+    bl_idname = "collision.add_capsule_collision_to_selected"
+    bl_label = "Add Capsule Collision"
+    bl_description = (
+        "Create a PCA-aligned UE5 UCP capsule fitted to the selected vertices, "
+        "or to the entire active mesh in Object Mode"
+    )
+    bl_options = {'REGISTER', 'UNDO'}
+
+    source_name: bpy.props.StringProperty(options={'HIDDEN', 'SKIP_SAVE'})
+    source_points: bpy.props.StringProperty(options={'HIDDEN', 'SKIP_SAVE'})
+    started_in_edit_mode: bpy.props.BoolProperty(options={'HIDDEN', 'SKIP_SAVE'})
+
+    offset: bpy.props.FloatProperty(
+        name="Offset",
+        description="Extra padding added around the collision capsule",
+        default=0.02,
+        min=0.0,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return _collision_poll(context)
+
+    def invoke(self, context, event):
+        _capture_collision_input(self, context)
+        return self.execute(context)
+
+    def execute(self, context):
+        source, points, was_edit_mode = _collision_source_points(self, context)
+        if len(points) < 2:
+            self.report({'ERROR'}, "Select at least 2 vertices, or use a mesh with at least 2 vertices")
+            return {'CANCELLED'}
+
+        point_array = np.array([point[:] for point in points])
+        centroid = point_array.mean(axis=0)
+        centered = point_array - centroid
+        covariance = np.cov(centered, rowvar=False)
+        eigenvalues, eigenvectors = np.linalg.eigh(covariance)
+        axis = Vector(eigenvectors[:, np.argmax(eigenvalues)]).normalized()
+
+        projections = [Vector(point - centroid).dot(axis) for point in point_array]
+        projection_min = min(projections)
+        projection_max = max(projections)
+        center = Vector(centroid) + axis * ((projection_min + projection_max) * 0.5)
+        radial_radius = max(
+            (Vector(point) - center - axis * (Vector(point) - center).dot(axis)).length
+            for point in point_array
+        )
+        radius = radial_radius + self.offset
+        axial_half = (projection_max - projection_min) * 0.5 + self.offset
+        cylinder_half = max(0.0, axial_half - radius)
+        if radius <= 0.0:
+            self.report({'ERROR'}, "Selected vertices do not define a valid capsule")
+            return {'CANCELLED'}
+
+        capsule_bm = bmesh.new()
+        try:
+            result = bmesh.ops.create_uvsphere(
+                capsule_bm,
+                u_segments=16,
+                v_segments=8,
+                radius=radius,
+                matrix=Matrix.Identity(4),
+            )
+            rotation = Vector((0.0, 0.0, 1.0)).rotation_difference(axis)
+            for vert in result['verts']:
+                if cylinder_half > 0.0:
+                    vert.co.z += cylinder_half if vert.co.z >= 0.0 else -cylinder_half
+                vert.co = center + rotation @ vert.co
+
+            if was_edit_mode:
+                bpy.ops.object.mode_set(mode='OBJECT')
+
+            capsule_mesh = bpy.data.meshes.new(source.name + "_CapsuleCollision")
+            capsule_bm.to_mesh(capsule_mesh)
+            capsule_mesh.update()
+            capsule = bpy.data.objects.new(source.name + "_Collision", capsule_mesh)
+            source.users_collection[0].objects.link(capsule)
+
+            bpy.ops.object.select_all(action='DESELECT')
+            capsule.select_set(True)
+            source.select_set(True)
+            context.view_layer.objects.active = source
+            bpy.ops.object.converttocapsulecollision()
+
+            show_collisions = context.scene.display_collisions
+            capsule.display_type = 'SOLID' if show_collisions else 'WIRE'
+            capsule.show_wire = show_collisions
+            capsule.data.materials.clear()
+            material = bpy.data.materials.get("MI_Collision")
+            if material is not None:
+                capsule.data.materials.append(material)
+
+            _restore_collision_source(context, source, was_edit_mode)
+            return {'FINISHED'}
+        finally:
+            capsule_bm.free()
 
 
 class AddConvexCollisionToSelectedOperator(bpy.types.Operator):
@@ -150,19 +355,42 @@ class AddConvexCollisionToSelectedOperator(bpy.types.Operator):
         "Create a strictly convex UE5 UCX collision mesh from the selected vertices "
         "and restore the original mesh selection and Edit Mode"
     )
-    bl_options = {'REGISTER', 'UNDO', 'UNDO_GROUPED'}
+    bl_options = {'REGISTER', 'UNDO'}
+
+    source_name: bpy.props.StringProperty(options={'HIDDEN', 'SKIP_SAVE'})
+    source_points: bpy.props.StringProperty(options={'HIDDEN', 'SKIP_SAVE'})
+    started_in_edit_mode: bpy.props.BoolProperty(options={'HIDDEN', 'SKIP_SAVE'})
+
+    offset: bpy.props.FloatProperty(
+        name="Offset",
+        description="Extra radial padding added around the convex collision hull",
+        default=0.02,
+        min=0.0,
+    )
 
     @classmethod
     def poll(cls, context):
-        return context.mode == 'EDIT_MESH' and context.edit_object is not None
+        return _collision_poll(context)
+
+    def invoke(self, context, event):
+        _capture_collision_input(self, context)
+        return self.execute(context)
 
     def execute(self, context):
-        source = context.edit_object
-        source_bm = bmesh.from_edit_mesh(source.data)
-        points = [source.matrix_world @ vert.co for vert in source_bm.verts if vert.select]
+        source, points, was_edit_mode = _collision_source_points(self, context)
         if len(points) < 4:
             self.report({'ERROR'}, "Select at least 4 vertices enclosing a 3D volume")
             return {'CANCELLED'}
+
+        if self.offset > 0.0:
+            center = sum(points, Vector((0.0, 0.0, 0.0))) / len(points)
+            padded_points = []
+            for point in points:
+                direction = point - center
+                if direction.length_squared > 1e-12:
+                    point = point + direction.normalized() * self.offset
+                padded_points.append(point)
+            points = padded_points
 
         hull_bm = bmesh.new()
         try:
@@ -196,7 +424,8 @@ class AddConvexCollisionToSelectedOperator(bpy.types.Operator):
                     break
                 index += 1
 
-            bpy.ops.object.mode_set(mode='OBJECT')
+            if was_edit_mode:
+                bpy.ops.object.mode_set(mode='OBJECT')
             collision_mesh = bpy.data.meshes.new(collision_name)
             hull_bm.to_mesh(collision_mesh)
             collision_mesh.update()
@@ -215,10 +444,7 @@ class AddConvexCollisionToSelectedOperator(bpy.types.Operator):
             if material is not None:
                 collision_mesh.materials.append(material)
 
-            bpy.ops.object.select_all(action='DESELECT')
-            source.select_set(True)
-            context.view_layer.objects.active = source
-            bpy.ops.object.mode_set(mode='EDIT')
+            _restore_collision_source(context, source, was_edit_mode)
             return {'FINISHED'}
         finally:
             hull_bm.free()
@@ -241,6 +467,8 @@ def InitDisplayCollisions(dummy):
 
 def register():
     bpy.utils.register_class(AddBoxCollisionToSelectedOperator)
+    bpy.utils.register_class(AddSphereCollisionToSelectedOperator)
+    bpy.utils.register_class(AddCapsuleCollisionToSelectedOperator)
     bpy.utils.register_class(AddConvexCollisionToSelectedOperator)
 
     bpy.types.Scene.display_collisions = bpy.props.BoolProperty(
@@ -253,6 +481,8 @@ def register():
 
 def unregister():
     bpy.utils.unregister_class(AddConvexCollisionToSelectedOperator)
+    bpy.utils.unregister_class(AddCapsuleCollisionToSelectedOperator)
+    bpy.utils.unregister_class(AddSphereCollisionToSelectedOperator)
     bpy.utils.unregister_class(AddBoxCollisionToSelectedOperator)
 
     del bpy.types.Scene.display_collisions

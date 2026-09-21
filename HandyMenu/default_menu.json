@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "roots": {
+    "edit": {
+      "id": "root-edit",
+      "label": "Edit Mode",
+      "items": [
+        {"id":"edit-uv","type":"submenu","enabled":true,"label":"UV","icon":"UV","menu":{"id":"menu-uv","label":"UV","items":[
+          {"id":"uv-clear-seam","type":"plugin_action","enabled":true,"action":"uv.clear_seam"},
+          {"id":"uv-mark-seam","type":"plugin_action","enabled":true,"action":"uv.mark_seam"},
+          {"id":"uv-reset","type":"plugin_action","enabled":true,"action":"uv.reset"},
+          {"id":"uv-unwrap","type":"plugin_action","enabled":true,"action":"uv.unwrap"},
+          {"id":"uv-project","type":"plugin_action","enabled":true,"action":"uv.project_view"}
+        ]}},
+        {"id":"edit-mesh","type":"submenu","enabled":true,"label":"Mesh","icon":"MESH_DATA","menu":{"id":"menu-mesh","label":"Mesh","items":[
+          {"id":"mesh-clear-sharp","type":"plugin_action","enabled":true,"action":"mesh.clear_sharp"},
+          {"id":"mesh-mark-sharp","type":"plugin_action","enabled":true,"action":"mesh.mark_sharp"},
+          {"id":"mesh-edge-flow","type":"plugin_action","enabled":true,"action":"mesh.edge_flow"},
+          {"id":"mesh-add-material","type":"plugin_action","enabled":true,"action":"mesh.add_material"},
+          {"id":"mesh-remove-checker","type":"plugin_action","enabled":true,"action":"mesh.remove_checker"}
+        ]}},
+        {"id":"edit-normals","type":"submenu","enabled":true,"label":"Normals","icon":"NORMALS_VERTEX","menu":{"id":"menu-normals","label":"Normals","items":[
+          {"id":"normal-flip","type":"plugin_action","enabled":true,"action":"normal.flip"},
+          {"id":"normal-recalculate","type":"plugin_action","enabled":true,"action":"normal.recalculate"},
+          {"id":"normal-weight","type":"submenu","enabled":true,"label":"Weight","icon":"MOD_VERTEX_WEIGHT","menu":{"id":"menu-weight","label":"Weight","items":[
+            {"id":"weight-empty-1","type":"separator","enabled":true},
+            {"id":"weight-empty-2","type":"separator","enabled":true},
+            {"id":"weight-select-medium","type":"plugin_action","enabled":true,"action":"weight.select_medium"},
+            {"id":"weight-set-medium","type":"plugin_action","enabled":true,"action":"weight.set_medium"},
+            {"id":"weight-set-weak","type":"plugin_action","enabled":true,"action":"weight.set_weak"},
+            {"id":"weight-set-strong","type":"plugin_action","enabled":true,"action":"weight.set_strong"},
+            {"id":"weight-select-weak","type":"plugin_action","enabled":true,"action":"weight.select_weak"},
+            {"id":"weight-select-strong","type":"plugin_action","enabled":true,"action":"weight.select_strong"}
+          ]}},
+          {"id":"normal-reset","type":"plugin_action","enabled":true,"action":"normal.reset"},
+          {"id":"normal-rotate","type":"plugin_action","enabled":true,"action":"normal.rotate"}
+        ]}},
+        {"id":"edit-selection","type":"submenu","enabled":true,"label":"Selection","icon":"RESTRICT_SELECT_OFF","menu":{"id":"menu-selection","label":"Selection","items":[
+          {"id":"select-rings","type":"plugin_action","enabled":true,"action":"select.rings"},
+          {"id":"select-loops","type":"plugin_action","enabled":true,"action":"select.loops"},
+          {"id":"select-boundary","type":"plugin_action","enabled":true,"action":"select.boundary"},
+          {"id":"select-checker","type":"plugin_action","enabled":true,"action":"select.checker"},
+          {"id":"select-inside","type":"plugin_action","enabled":true,"action":"select.inside"},
+          {"id":"select-coplanar","type":"plugin_action","enabled":true,"action":"select.coplanar"},
+          {"id":"select-overlap","type":"plugin_action","enabled":true,"action":"select.overlap"}
+        ]}},
+        {"id":"edit-vcolor","type":"submenu","enabled":true,"label":"Vertex Color","icon":"GROUP_VCOL","menu":{"id":"menu-vcolor","label":"Vertex Color","items":[
+          {"id":"vcolor-copy","type":"plugin_action","enabled":true,"action":"vcolor.copy"},
+          {"id":"vcolor-paste","type":"plugin_action","enabled":true,"action":"vcolor.paste"},
+          {"id":"vcolor-paint","type":"plugin_action","enabled":true,"action":"vcolor.paint"},
+          {"id":"vcolor-select","type":"plugin_action","enabled":true,"action":"vcolor.select"}
+        ]}},
+        {"id":"edit-lightmap","type":"submenu","enabled":true,"label":"Lightmapping","icon":"LIGHT","menu":{"id":"menu-lightmap-edit","label":"Lightmapping","items":[
+          {"id":"lm-scale","type":"plugin_action","enabled":true,"action":"lightmap.scale"},
+          {"id":"lm-pack","type":"plugin_action","enabled":true,"action":"lightmap.pack"}
+        ]}},
+        {"id":"edit-collision","type":"submenu","enabled":true,"label":"Collision","icon":"META_CAPSULE","menu":{"id":"menu-collision-edit","label":"Collision","items":[
+          {"id":"collision-box-edit","type":"plugin_action","enabled":true,"action":"collision.box"},
+          {"id":"collision-sphere-edit","type":"plugin_action","enabled":true,"action":"collision.sphere"},
+          {"id":"collision-capsule-edit","type":"plugin_action","enabled":true,"action":"collision.capsule"},
+          {"id":"collision-convex-edit","type":"plugin_action","enabled":true,"action":"collision.convex"}
+        ]}},
+        {"id":"edit-utils","type":"submenu","enabled":true,"label":"Utils","icon":"TOOL_SETTINGS","menu":{"id":"menu-utils-edit","label":"Utils","items":[
+          {"id":"util-origin","type":"plugin_action","enabled":true,"action":"util.origin_selection"},
+          {"id":"util-rotation","type":"plugin_action","enabled":true,"action":"util.fix_rotation"},
+          {"id":"util-length","type":"plugin_action","enabled":true,"action":"util.edge_length"},
+          {"id":"util-angle","type":"plugin_action","enabled":true,"action":"util.edge_angle"}
+        ]}}
+      ]
+    },
+    "object": {
+      "id": "root-object",
+      "label": "Object Mode",
+      "items": [
+        {"id":"object-main","type":"submenu","enabled":true,"label":"Object","icon":"OBJECT_DATA","menu":{"id":"menu-object","label":"Object","items":[
+          {"id":"object-display","type":"plugin_action","enabled":true,"action":"object.display_type"},
+          {"id":"object-smooth","type":"plugin_action","enabled":true,"action":"object.auto_smooth"},
+          {"id":"object-history","type":"plugin_action","enabled":true,"action":"object.history"},
+          {"id":"object-parent-each","type":"plugin_action","enabled":true,"action":"object.parent_each"},
+          {"id":"object-parent-active","type":"plugin_action","enabled":true,"action":"object.parent_active"},
+          {"id":"object-parent","type":"plugin_action","enabled":true,"action":"object.parent"}
+        ]}},
+        {"id":"object-export","type":"submenu","enabled":true,"label":"Import + Export","icon":"EXPORT","menu":{"id":"menu-export","label":"Import + Export","items":[
+          {"id":"export-import-fbx","type":"plugin_action","enabled":true,"action":"export.import_fbx"},
+          {"id":"export-fbx","type":"plugin_action","enabled":true,"action":"export.fbx"},
+          {"id":"export-batch","type":"plugin_action","enabled":true,"action":"export.batch"}
+        ]}},
+        {"id":"object-lightmap","type":"submenu","enabled":true,"label":"Lightmapping","icon":"LIGHT","menu":{"id":"menu-lightmap-object","label":"Lightmapping","items":[
+          {"id":"lm-unpack","type":"plugin_action","enabled":true,"action":"lightmap.unpack"},
+          {"id":"lm-clear","type":"plugin_action","enabled":true,"action":"lightmap.clear"},
+          {"id":"lm-bake","type":"plugin_action","enabled":true,"action":"lightmap.bake"},
+          {"id":"lm-denoise","type":"plugin_action","enabled":true,"action":"lightmap.denoise"},
+          {"id":"lm-fillers-clear","type":"plugin_action","enabled":true,"action":"lightmap.restore_fillers"},
+          {"id":"lm-fillers","type":"plugin_action","enabled":true,"action":"lightmap.replace_fillers"},
+          {"id":"lm-unpack-active","type":"plugin_action","enabled":true,"action":"lightmap.unpack_active"},
+          {"id":"lm-repack-active","type":"plugin_action","enabled":true,"action":"lightmap.repack_active"}
+        ]}},
+        {"id":"object-overlay","type":"submenu","enabled":true,"label":"Display Overlays","icon":"OVERLAY","menu":{"id":"menu-overlay","label":"Display Overlays","items":[
+          {"id":"overlay-collision","type":"plugin_action","enabled":true,"action":"overlay.collisions"},
+          {"id":"overlay-lighting","type":"plugin_action","enabled":true,"action":"overlay.lighting"},
+          {"id":"overlay-all","type":"plugin_action","enabled":true,"action":"overlay.all"},
+          {"id":"overlay-wire","type":"plugin_action","enabled":true,"action":"overlay.wire"},
+          {"id":"overlay-faces","type":"plugin_action","enabled":true,"action":"overlay.faces"}
+        ]}},
+        {"id":"object-unreal","type":"submenu","enabled":true,"label":"To Unreal","icon":"EXPORT","menu":{"id":"menu-unreal","label":"To Unreal","items":[
+          {"id":"unreal-setup","type":"plugin_action","enabled":true,"action":"unreal.setup"},
+          {"id":"unreal-export","type":"plugin_action","enabled":true,"action":"unreal.export"},
+          {"id":"unreal-noexport","type":"plugin_action","enabled":true,"action":"unreal.noexport"},
+          {"id":"unreal-path","type":"plugin_action","enabled":true,"action":"unreal.path"}
+        ]}},
+        {"id":"object-assets","type":"submenu","enabled":true,"label":"Asset Browser","icon":"ASSET_MANAGER","menu":{"id":"menu-assets","label":"Asset Browser","items":[
+          {"id":"asset-create","type":"plugin_action","enabled":true,"action":"asset.create"}
+        ]}},
+        {"id":"object-collision","type":"submenu","enabled":true,"label":"Collision","icon":"META_CAPSULE","menu":{"id":"menu-collision-object","label":"Collision","items":[
+          {"id":"collision-box-object","type":"plugin_action","enabled":true,"action":"collision.box"},
+          {"id":"collision-sphere-object","type":"plugin_action","enabled":true,"action":"collision.sphere"},
+          {"id":"collision-capsule-object","type":"plugin_action","enabled":true,"action":"collision.capsule"},
+          {"id":"collision-convex-object","type":"plugin_action","enabled":true,"action":"collision.convex"}
+        ]}},
+        {"id":"object-utils","type":"submenu","enabled":true,"label":"Utils","icon":"OBJECT_ORIGIN","menu":{"id":"menu-utils-object","label":"Utils","items":[
+          {"id":"copy-modifiers","type":"plugin_action","enabled":true,"action":"object.copy_modifiers"},
+          {"id":"copy-materials","type":"plugin_action","enabled":true,"action":"object.copy_materials"},
+          {"id":"origins-active","type":"plugin_action","enabled":true,"action":"object.origins_active"},
+          {"id":"add-active","type":"plugin_action","enabled":true,"action":"object.add_active"},
+          {"id":"replace-active","type":"plugin_action","enabled":true,"action":"object.replace_active"}
+        ]}}
+      ]
+    },
+    "no_active": {
+      "id": "root-no-active",
+      "label": "No Active Object",
+      "items": [
+        {"id":"no-empty","type":"separator","enabled":true},
+        {"id":"no-export","type":"submenu","enabled":true,"label":"Import + Export","icon":"EXPORT","menu":{"id":"menu-export-no-active","label":"Import + Export","items":[
+          {"id":"no-import-fbx","type":"plugin_action","enabled":true,"action":"export.import_fbx"},
+          {"id":"no-export-fbx","type":"plugin_action","enabled":true,"action":"export.fbx"}
+        ]}},
+        {"id":"no-lightmap","type":"submenu","enabled":true,"label":"Lightmapping","icon":"LIGHT","menu":{"id":"menu-lightmap-no-active","label":"Lightmapping","items":[
+          {"id":"no-lm-unpack","type":"plugin_action","enabled":true,"action":"lightmap.unpack"},
+          {"id":"no-lm-clear","type":"plugin_action","enabled":true,"action":"lightmap.clear"},
+          {"id":"no-lm-bake","type":"plugin_action","enabled":true,"action":"lightmap.bake"},
+          {"id":"no-lm-denoise","type":"plugin_action","enabled":true,"action":"lightmap.denoise"},
+          {"id":"no-lm-fillers-clear","type":"plugin_action","enabled":true,"action":"lightmap.restore_fillers"},
+          {"id":"no-lm-fillers","type":"plugin_action","enabled":true,"action":"lightmap.replace_fillers"},
+          {"id":"no-lm-unpack-active","type":"plugin_action","enabled":true,"action":"lightmap.unpack_active"},
+          {"id":"no-lm-repack-active","type":"plugin_action","enabled":true,"action":"lightmap.repack_active"}
+        ]}},
+        {"id":"no-overlay","type":"submenu","enabled":true,"label":"Display Overlays","icon":"OVERLAY","menu":{"id":"menu-overlay-no-active","label":"Display Overlays","items":[
+          {"id":"no-overlay-collision","type":"plugin_action","enabled":true,"action":"overlay.collisions"},
+          {"id":"no-overlay-lighting","type":"plugin_action","enabled":true,"action":"overlay.lighting"},
+          {"id":"no-overlay-all","type":"plugin_action","enabled":true,"action":"overlay.all"},
+          {"id":"no-overlay-wire","type":"plugin_action","enabled":true,"action":"overlay.wire"},
+          {"id":"no-overlay-faces","type":"plugin_action","enabled":true,"action":"overlay.faces"}
+        ]}}
+      ]
+    }
+  }
+}

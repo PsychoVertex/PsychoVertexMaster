@@ -15,6 +15,7 @@ release/
 Lightmapping/NativePostprocessor/build/
 backups/
 downloads/
+denoisers/
 eggs/
 .eggs/
 lib/

@@ -191,7 +191,7 @@ The <kbd>D</kbd> menu is the center of PsychoVertexMaster. It groups actions by 
 
 | Action | What it does |
 | --- | --- |
-| **HSV Mouse Paint** | Opens an HSV palette around the mouse and applies the chosen color to selected geometry. Scroll to change brightness; click to confirm; right-click or Esc to cancel. |
+| **HSV Mouse Paint** | Opens a fast saturation/value square with a hue strip around the mouse. Click or drag either control to choose a color, click outside to confirm, or right-click/Esc to cancel. |
 | **Select Matching** | Selects faces whose active color matches the active face. |
 | **Copy** | Averages the active face color and copies it to the clipboard as `#RRGGBB`. |
 | **Paste** | Reads a hex color from the clipboard and applies it to all selected faces. |
@@ -297,9 +297,9 @@ Vertex colors become a practical modeling tool instead of a panel-hunting exerci
 
 1. Enter Edit Mode and select vertices, edges, or faces.
 2. Press <kbd>D</kbd> and open **Vertex Color → HSV Mouse Paint**.
-3. Move horizontally to choose hue and vertically to choose saturation.
-4. Use the mouse wheel to adjust value/brightness.
-5. Left-click to accept or press <kbd>Esc</kbd> to cancel.
+3. Click or drag across the large square to set saturation and value.
+4. Click or drag across the side strip to set hue.
+5. Click outside the picker to accept or press <kbd>Esc</kbd> to cancel.
 
 The tool temporarily switches viewport shading so the color is visible, supports point- and corner-domain color attributes, creates a `Color` corner attribute when necessary, and restores the previous display afterward.
 
@@ -409,6 +409,15 @@ Open **Edit → Preferences → Add-ons → PsychoVertexMaster**.
 | --- | --- |
 | **Pie Menus** | Fast radial navigation designed for muscle memory. This is the default. |
 | **Normal Menus** | A conventional multi-column layout for users who prefer visible lists. |
+
+### External lightmap denoisers
+
+The preferences include compact executable paths for **OIDN** and **OptiX**. You can select an existing executable, or use the two download buttons beneath the paths:
+
+- **Download Open Image Denoiser** installs OIDN 2.5.1, including its required DLLs, inside the add-on's `denoisers` folder.
+- **Download OptiX Denoiser** installs Declan Russell's compatible `Denoiser.exe` in the same folder.
+
+Downloaded executables become the defaults automatically. A manually selected path always takes precedence. Internet access and write permission to the installed add-on directory are required for downloading.
 
 ---
 
