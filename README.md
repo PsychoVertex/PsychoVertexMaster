@@ -471,12 +471,14 @@ Open **Edit → Preferences → Add-ons → PsychoVertexMaster**.
 Customize independent Handy Menu layouts for **Edit Mode**, **Object Mode**, and **No Active Object**. Each context can contain up to eight enabled slots while retaining additional disabled entries for later use.
 
 - Reorder, enable or disable, and remove entries directly from each row.
-- Rename items, enter Blender icon identifiers, or use the visual icon picker.
+- Rename custom entries and choose their Blender icons with the visual icon picker.
 - Open and edit nested submenus through the breadcrumb navigation.
 - Add built-in PsychoVertexMaster actions, custom Blender operators, safe property controls, separators, or submenus.
 - Import, export, or reset the complete menu configuration with the header controls.
 
 Layouts persist in Blender's add-on preferences. Import and export use JSON files for backup or transfer. The eight-slot limit applies only to enabled entries in each individual menu; additional entries may remain configured but disabled.
+
+The shipped layout stores ordinary Blender operators and RNA properties as editable custom entries, keeping **Plugin Action** focused on PsychoVertexMaster and curated integration features. Existing installations can adopt the latest defaults with **Reset Menu Configuration**.
 
 ### External lightmap denoisers
 
@@ -494,6 +496,18 @@ External denoising is optional, and installing **either** backend is sufficient�
 These denoisers are currently used only by PsychoVertexMaster's custom lightmapping workflow; they do not affect Blender renders or other add-on tools. More denoising uses may be added later. **OIDN is preferred when external denoising is enabled** because it provides the dedicated `RTLightmap` filter used by this workflow.
 
 Both downloads come directly from third-party GitHub releases and are not developed or bundled by PsychoVertexMaster. [Intel Open Image Denoise](https://github.com/RenderKit/oidn) is distributed under Apache 2.0; [Declan Russell's NVIDIA AI Denoiser](https://github.com/DeclanRussell/NvidiaAIDenoiser) is distributed under the MIT License. Their upstream requirements and licenses apply.
+
+### Updates
+
+PsychoVertexMaster checks the repository's latest stable GitHub Release in the background shortly after Blender starts. When a newer version is available, the update dialog provides:
+
+- **Update** to validate and install the release;
+- **Cancel** to leave the current installation unchanged;
+- **Don't show again for this update** to suppress that exact release while allowing alerts for later releases.
+
+Use **Check for Updates** at any time for a manual check. **Automatic Alerts** is enabled by default; turn it off to disable startup update checks and dialogs completely. Manual checks continue to work while automatic alerts are disabled.
+
+Updates preserve downloaded denoisers and local backup data. After a successful installation, restart Blender to load the new version. Release tags must match the version embedded in the add-on, so only properly versioned stable releases are accepted.
 
 ---
 
@@ -515,7 +529,7 @@ Both downloads come directly from third-party GitHub releases and are not develo
 
 ### Updating
 
-Disable or remove the previous version, install the new ZIP, then restart Blender if old registered operators remain in the current session.
+Use **Check for Updates** in the add-on preferences, or accept an automatic update alert. Restart Blender after installation. You can still update manually by disabling or removing the previous version, installing the new release ZIP, and restarting Blender.
 
 ---
 

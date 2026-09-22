@@ -100,8 +100,13 @@ class PV_Preferences(AddonPreferences):
         ("PIE_MENUS", "Pie Menus", ""),
         ("NORMAL_MENUS", "Normal Menus", ""),
     ], default="PIE_MENUS")
-    oidn_path: StringProperty(name="OIDN", subtype="FILE_PATH", default="")
+    oidn_path: StringProperty(name="OIDN (Recommended)", subtype="FILE_PATH", default="")
     optix_path: StringProperty(name="OptiX", subtype="FILE_PATH", default="")
+    auto_update_alerts: BoolProperty(
+        name="Automatic Update Checks",
+        description="Check for stable GitHub releases when Blender starts",
+        default=True)
+    ignored_update_version: StringProperty(default="", options={"HIDDEN"})
     dialog_settings: StringProperty(default="{}", options={"HIDDEN"})
     menu_config: StringProperty(default="", options={"HIDDEN"})
     menu_config_recovery: StringProperty(default="", options={"HIDDEN"})
@@ -114,7 +119,13 @@ class PV_Preferences(AddonPreferences):
 
     def draw(self, context):
         layout = self.layout
-        layout.prop(self, "mode")
+
+        row = layout.row(align=True)
+        row.operator("pvm.check_for_updates", text="Check for Updates", icon="FILE_REFRESH")
+        row.prop(self, "auto_update_alerts", text="Automatic Update Checks", toggle=True)
+
+        layout.separator()
+
         denoise = layout.box()
         denoise.label(text="Lightmap Denoising", icon="IMAGE_DATA")
         denoise.prop(self, "oidn_path")
@@ -124,6 +135,9 @@ class PV_Preferences(AddonPreferences):
         oidn.denoiser = "OIDN"
         optix = downloads.operator("pvm.download_denoiser", text="Download OptiX Denoiser", icon="IMPORT")
         optix.denoiser = "OPTIX"
+
+        layout.separator()
+
         _draw_menu_preferences(layout, self)
 
 
@@ -171,6 +185,16 @@ class PVM_OT_DownloadDenoiser(bpy.types.Operator):
 
     def execute(self, context):
         prefs = get()
+        installed = OIDN_EXECUTABLE if self.denoiser == "OIDN" else OPTIX_EXECUTABLE
+        if installed.is_file():
+            if prefs:
+                if self.denoiser == "OIDN":
+                    prefs.oidn_path = str(installed)
+                else:
+                    prefs.optix_path = str(installed)
+            self.report({"INFO"}, f"Using existing {installed.name}")
+            return {"FINISHED"}
+
         try:
             DENOISER_DIR.mkdir(parents=True, exist_ok=True)
             if self.denoiser == "OIDN":
@@ -289,49 +313,65 @@ def _draw_menu_preferences(layout, prefs):
     box = layout.box()
     header = box.row(align=True)
     header.label(text="Menu Configuration", icon="MENU_PANEL")
-    header.operator("pvm.menu_import", text="", icon="IMPORT")
-    header.operator("pvm.menu_export", text="", icon="EXPORT")
-    header.operator("pvm.menu_reset", text="", icon="FILE_REFRESH")
-    box.prop(prefs, "menu_root", expand=True)
+    header.operator("pvm.menu_import", text="Import", icon="IMPORT")
+    header.operator("pvm.menu_export", text="Export", icon="EXPORT")
+    header.operator("pvm.menu_reset", text="Reset", icon="FILE_REFRESH")
+    box.prop(prefs, "mode")
     config = get_menu_config(prefs)
     menu, parents = _current_menu(prefs, config)
     _sync_inline_fields(prefs, menu)
     crumbs = box.row(align=True)
-    chain = parents + [menu]
+    crumbs.prop(prefs, "menu_root", text="", icon="DOWNARROW_HLT")
+    chain = (parents[1:] + [menu]) if parents else []
     for entry in chain:
+        crumbs.label(text="", icon="TRIA_RIGHT")
         op = crumbs.operator("pvm.menu_navigate", text=entry["label"] or "Menu")
         op.menu_id = entry["id"]
     enabled_count = sum(item.get("enabled", True) for item in menu["items"])
     box.label(text=f"{enabled_count}/8 enabled slots · {len(menu['items'])} configured items")
     for index, item in enumerate(menu["items"]):
         row = box.row(align=True)
+        toggle = row.operator("pvm.menu_toggle", text="", icon="CHECKBOX_HLT" if item.get("enabled", True) else "CHECKBOX_DEHLT")
+        toggle.index = index
+        up = row.operator("pvm.menu_move", text="", icon="TRIA_UP")
+        up.index = index
+        up.direction = -1
+        down = row.operator("pvm.menu_move", text="", icon="TRIA_DOWN")
+        down.index = index
+        down.direction = 1
+
+        if item["type"] != "separator":
+            picker = row.operator("pvm.menu_choose_icon", text="", icon="NODE_MATERIAL")
+            picker.index = index
+
         if item["type"] == "submenu":
-            nav = row.operator("pvm.menu_navigate", text="", icon="IMPORT")
+            nav = row.operator("pvm.menu_navigate", text="", icon="COLLAPSEMENU")
             nav.menu_id = item["menu"]["id"]
         else:
             row.label(text="", icon="BLANK1")
-        up = row.operator("pvm.menu_move", text="", icon="TRIA_UP"); up.index = index; up.direction = -1
-        down = row.operator("pvm.menu_move", text="", icon="TRIA_DOWN"); down.index = index; down.direction = 1
-        toggle = row.operator("pvm.menu_toggle", text="", icon="CHECKBOX_HLT" if item.get("enabled", True) else "CHECKBOX_DEHLT")
-        toggle.index = index
-        remove = row.operator("pvm.menu_remove", text="", icon="X")
-        remove.index = index
-        preview = row.row(align=True)
-        preview.ui_units_x = 1.0
-        preview.label(text="", icon=_safe_icon(item.get("icon", "")))
-        if item["type"] != "separator":
-            row.prop(prefs, f"menu_item_label_{index}", text="")
-            row.prop(prefs, f"menu_item_icon_{index}", text="")
-            picker = row.operator("pvm.menu_choose_icon", text="", icon="EYEDROPPER")
-            picker.index = index
+
+        row.label(text="", icon=_safe_icon(item.get("icon", "BLANK1")))
+
         if item["type"] == "plugin_action":
             row.prop(prefs, f"menu_item_action_{index}", text="")
         elif item["type"] == "custom_operator":
+            label_field = row.row(align=True)
+            label_field.ui_units_x = 3.0
+            label_field.prop(prefs, f"menu_item_label_{index}", text="")
             row.prop(prefs, f"menu_item_command_{index}", text="")
         elif item["type"] == "custom_property":
+            label_field = row.row(align=True)
+            label_field.prop(prefs, f"menu_item_label_{index}", text="")
+            label_field.ui_units_x = 3.0
             row.prop(prefs, f"menu_item_path_{index}", text="")
+        elif item["type"] == "submenu":
+            row.prop(prefs, f"menu_item_label_{index}", text="")
         elif item["type"] == "separator":
             row.label(text="Separator")
+
+        remove = row.operator("pvm.menu_remove", text="", icon="X")
+        remove.index = index
+
     box.operator_menu_enum("pvm.menu_add", "item_type", text="Add Item", icon="ADD")
     if prefs.menu_config_recovery:
         warning = box.box()
@@ -340,23 +380,31 @@ def _draw_menu_preferences(layout, prefs):
 
 
 class PVM_OT_MenuNavigate(bpy.types.Operator):
-    bl_idname = "pvm.menu_navigate"; bl_label = "Open Configured Menu"
+    bl_idname = "pvm.menu_navigate"
+    bl_label = "Open Configured Menu"
     menu_id: StringProperty()
+
     def execute(self, context):
-        prefs = get(); prefs.menu_current_id = self.menu_id; prefs.menu_selected_index = 0
+        prefs = get()
+        prefs.menu_current_id = self.menu_id
+        prefs.menu_selected_index = 0
         return {"FINISHED"}
 
 
 class PVM_OT_MenuSelect(bpy.types.Operator):
-    bl_idname = "pvm.menu_select"; bl_label = "Select Menu Item"
+    bl_idname = "pvm.menu_select"
+    bl_label = "Select Menu Item"
     index: IntProperty()
+
     def execute(self, context):
         get().menu_selected_index = self.index
         return {"FINISHED"}
 
 
 def _mutate_selected(mutator):
-    prefs = get(); config = get_menu_config(prefs); menu, _ = _current_menu(prefs, config)
+    prefs = get()
+    config = get_menu_config(prefs)
+    menu, _ = _current_menu(prefs, config)
     if not menu["items"]:
         return False
     index = min(prefs.menu_selected_index, len(menu["items"]) - 1)
@@ -367,10 +415,14 @@ def _mutate_selected(mutator):
 
 
 class PVM_OT_MenuToggle(bpy.types.Operator):
-    bl_idname = "pvm.menu_toggle"; bl_label = "Enable or Disable Item"
+    bl_idname = "pvm.menu_toggle"
+    bl_label = "Enable or Disable Item"
     index: IntProperty()
+
     def execute(self, context):
-        prefs = get(); config = get_menu_config(prefs); menu, _ = _current_menu(prefs, config)
+        prefs = get()
+        config = get_menu_config(prefs)
+        menu, _ = _current_menu(prefs, config)
         if not 0 <= self.index < len(menu["items"]):
             return {"CANCELLED"}
         item = menu["items"][self.index]
@@ -385,30 +437,41 @@ class PVM_OT_MenuToggle(bpy.types.Operator):
 
 
 class PVM_OT_MenuMove(bpy.types.Operator):
-    bl_idname = "pvm.menu_move"; bl_label = "Move Menu Item"
-    index: IntProperty(); direction: IntProperty()
+    bl_idname = "pvm.menu_move"
+    bl_label = "Move Menu Item"
+    index: IntProperty()
+    direction: IntProperty()
+
     def execute(self, context):
-        prefs = get(); config = get_menu_config(prefs); menu, _ = _current_menu(prefs, config)
+        prefs = get()
+        config = get_menu_config(prefs)
+        menu, _ = _current_menu(prefs, config)
         target = self.index + self.direction
         if 0 <= self.index < len(menu["items"]) and 0 <= target < len(menu["items"]):
             menu["items"][self.index], menu["items"][target] = menu["items"][target], menu["items"][self.index]
-            prefs.menu_selected_index = target; _store_config(prefs, config)
+            prefs.menu_selected_index = target
+            _store_config(prefs, config)
         return {"FINISHED"}
 
 
 class PVM_OT_MenuAdd(bpy.types.Operator):
-    bl_idname = "pvm.menu_add"; bl_label = "Add Menu Item"
+    bl_idname = "pvm.menu_add"
+    bl_label = "Add Menu Item"
     item_type: EnumProperty(items=[
         ("separator", "Separator", ""), ("submenu", "Submenu", ""),
         ("plugin_action", "Plugin Action", ""), ("custom_operator", "Custom Operator", ""),
         ("custom_property", "Custom Property", ""),
     ])
+
     def execute(self, context):
-        prefs = get(); config = get_menu_config(prefs); menu, _ = _current_menu(prefs, config)
+        prefs = get()
+        config = get_menu_config(prefs)
+        menu, _ = _current_menu(prefs, config)
         if len(menu["items"]) >= MAX_CONFIG_ITEMS:
             self.report({"ERROR"}, f"A menu may contain at most {MAX_CONFIG_ITEMS} configured items")
             return {"CANCELLED"}
-        handy = _handy_menu(); item = {"id": handy.new_id("item"), "type": self.item_type, "enabled": True}
+        handy = _handy_menu()
+        item = {"id": handy.new_id("item"), "type": self.item_type, "enabled": True}
         if sum(entry.get("enabled", True) for entry in menu["items"]) >= 8:
             item["enabled"] = False
         if self.item_type == "submenu":
@@ -420,15 +483,21 @@ class PVM_OT_MenuAdd(bpy.types.Operator):
         elif self.item_type == "custom_property":
             item.update(label="Custom Property", icon="NONE",
                         property_path="context.object.display_type")
-        menu["items"].append(item); prefs.menu_selected_index = len(menu["items"]) - 1; _store_config(prefs, config)
+        menu["items"].append(item)
+        prefs.menu_selected_index = len(menu["items"]) - 1
+        _store_config(prefs, config)
         return {"FINISHED"}
 
 
 class PVM_OT_MenuRemove(bpy.types.Operator):
-    bl_idname = "pvm.menu_remove"; bl_label = "Remove Menu Item"
+    bl_idname = "pvm.menu_remove"
+    bl_label = "Remove Menu Item"
     index: IntProperty()
+
     def execute(self, context):
-        prefs = get(); config = get_menu_config(prefs); menu, _ = _current_menu(prefs, config)
+        prefs = get()
+        config = get_menu_config(prefs)
+        menu, _ = _current_menu(prefs, config)
         if 0 <= self.index < len(menu["items"]):
             menu["items"].pop(self.index)
             _store_config(prefs, config)
@@ -497,106 +566,161 @@ class PVM_OT_MenuSetIcon(bpy.types.Operator):
 
 
 class PVM_OT_MenuEdit(bpy.types.Operator):
-    bl_idname = "pvm.menu_edit"; bl_label = "Edit Menu Item"
+    bl_idname = "pvm.menu_edit"
+    bl_label = "Edit Menu Item"
     label: StringProperty(name="Label")
     icon: StringProperty(name="Blender Icon", description="Icon enum, for example UV or EXPORT")
     action: EnumProperty(name="Plugin Action", items=_action_items)
     command: StringProperty(name="Operator Command", description="bpy.ops.category.operator(keyword=value)")
 
     def invoke(self, context, event):
-        prefs = get(); config = get_menu_config(prefs); menu, _ = _current_menu(prefs, config)
-        if not menu["items"]: return {"CANCELLED"}
+        prefs = get()
+        config = get_menu_config(prefs)
+        menu, _ = _current_menu(prefs, config)
+        if not menu["items"]:
+            return {"CANCELLED"}
         item = menu["items"][prefs.menu_selected_index]
-        self.label = item.get("label", ""); self.icon = item.get("icon", "")
-        if item["type"] == "plugin_action": self.action = item["action"]
+        self.label = item.get("label", "")
+        self.icon = item.get("icon", "")
+        if item["type"] == "plugin_action":
+            self.action = item["action"]
         if item["type"] == "custom_operator":
             props = ", ".join(f"{key}={value!r}" for key, value in item.get("properties", {}).items())
             self.command = f"bpy.ops.{item['operator_id']}({props})"
         return context.window_manager.invoke_props_dialog(self, width=520)
 
     def draw(self, context):
-        prefs = get(); config = get_menu_config(prefs); menu, _ = _current_menu(prefs, config); item = menu["items"][prefs.menu_selected_index]
+        prefs = get()
+        config = get_menu_config(prefs)
+        menu, _ = _current_menu(prefs, config)
+        item = menu["items"][prefs.menu_selected_index]
         if item["type"] != "separator":
-            self.layout.prop(self, "label"); self.layout.prop(self, "icon")
-        if item["type"] == "plugin_action": self.layout.prop(self, "action")
+            self.layout.prop(self, "label")
+            self.layout.prop(self, "icon")
+        if item["type"] == "plugin_action":
+            self.layout.prop(self, "action")
         elif item["type"] == "custom_operator":
-            self.layout.prop(self, "command"); self.layout.label(text="Only literal keyword values are accepted.", icon="LOCKED")
+            self.layout.prop(self, "command")
+            self.layout.label(text="Only literal keyword values are accepted.", icon="LOCKED")
 
     def execute(self, context):
-        prefs = get(); config = get_menu_config(prefs); menu, _ = _current_menu(prefs, config); item = menu["items"][prefs.menu_selected_index]
-        if item["type"] != "separator": item["label"], item["icon"] = self.label, self.icon
-        if item["type"] == "submenu": item["menu"]["label"] = self.label or "Submenu"
-        elif item["type"] == "plugin_action": item["action"] = self.action
+        prefs = get()
+        config = get_menu_config(prefs)
+        menu, _ = _current_menu(prefs, config)
+        item = menu["items"][prefs.menu_selected_index]
+        if item["type"] != "separator":
+            item["label"], item["icon"] = self.label, self.icon
+        if item["type"] == "submenu":
+            item["menu"]["label"] = self.label or "Submenu"
+        elif item["type"] == "plugin_action":
+            item["action"] = self.action
         elif item["type"] == "custom_operator":
-            try: operator_id, properties = _model().parse_operator_command(self.command)
+            try:
+                operator_id, properties = _model().parse_operator_command(self.command)
             except _model().MenuConfigError as exc:
-                self.report({"ERROR"}, str(exc)); return {"CANCELLED"}
+                self.report({"ERROR"}, str(exc))
+                return {"CANCELLED"}
             operator = _handy_menu()._operator_exists(operator_id)
             if operator is None:
-                self.report({"ERROR"}, f"Operator {operator_id} is not installed"); return {"CANCELLED"}
+                self.report({"ERROR"}, f"Operator {operator_id} is not installed")
+                return {"CANCELLED"}
             try:
                 valid = {prop.identifier for prop in operator.get_rna_type().properties if prop.identifier != "rna_type"}
-            except Exception: valid = set(properties)
+            except Exception:
+                valid = set(properties)
             unknown = set(properties) - valid
             if unknown:
-                self.report({"ERROR"}, "Unknown operator properties: " + ", ".join(sorted(unknown))); return {"CANCELLED"}
+                self.report({"ERROR"}, "Unknown operator properties: " + ", ".join(sorted(unknown)))
+                return {"CANCELLED"}
             item["operator_id"], item["properties"] = operator_id, properties
-        _store_config(prefs, config); return {"FINISHED"}
+        _store_config(prefs, config)
+        return {"FINISHED"}
 
 
 class PVM_OT_MenuReset(bpy.types.Operator):
-    bl_idname = "pvm.menu_reset"; bl_label = "Reset Menu Configuration"; bl_options = {"INTERNAL"}
+    bl_idname = "pvm.menu_reset"
+    bl_label = "Reset Menu Configuration"
+    bl_options = {"INTERNAL"}
     def invoke(self, context, event): return context.window_manager.invoke_confirm(self, event)
+
     def execute(self, context):
-        prefs = get(); prefs.menu_current_id = ""; prefs.menu_selected_index = 0; prefs.menu_config_recovery = ""; _store_config(prefs, _model().clone_default())
+        prefs = get()
+        prefs.menu_current_id = ""
+        prefs.menu_selected_index = 0
+        prefs.menu_config_recovery = ""
+        _store_config(prefs, _model().clone_default())
         return {"FINISHED"}
 
 
 class PVM_OT_MenuImport(bpy.types.Operator, ImportHelper):
-    bl_idname = "pvm.menu_import"; bl_label = "Import Menu Configuration"
-    filename_ext = ".json"; filter_glob: StringProperty(default="*.json", options={"HIDDEN"})
+    bl_idname = "pvm.menu_import"
+    bl_label = "Import Menu Configuration"
+    filename_ext = ".json"
+    filter_glob: StringProperty(default="*.json", options={"HIDDEN"})
     confirm_replace: BoolProperty(
         name="Replace current menu configuration",
         description="The imported configuration replaces all current menu roots")
+
     def draw(self, context):
         self.layout.prop(self, "confirm_replace")
+
     def execute(self, context):
         if not self.confirm_replace:
             self.report({"ERROR"}, "Confirm replacement before importing")
             return {"CANCELLED"}
-        try: config = _model().loads(Path(self.filepath).read_text(encoding="utf-8"))
+        try:
+            config = _model().loads(Path(self.filepath).read_text(encoding="utf-8"))
         except (OSError, _model().MenuConfigError) as exc:
-            self.report({"ERROR"}, f"Import failed: {exc}"); return {"CANCELLED"}
-        prefs = get(); prefs.menu_current_id = ""; prefs.menu_selected_index = 0; _store_config(prefs, config)
-        self.report({"INFO"}, "Menu configuration imported"); return {"FINISHED"}
+            self.report({"ERROR"}, f"Import failed: {exc}")
+            return {"CANCELLED"}
+        prefs = get()
+        prefs.menu_current_id = ""
+        prefs.menu_selected_index = 0
+        _store_config(prefs, config)
+        self.report({"INFO"}, "Menu configuration imported")
+        return {"FINISHED"}
 
 
 class PVM_OT_MenuExport(bpy.types.Operator, ExportHelper):
-    bl_idname = "pvm.menu_export"; bl_label = "Export Menu Configuration"
-    filename_ext = ".json"; filter_glob: StringProperty(default="*.json", options={"HIDDEN"})
+    bl_idname = "pvm.menu_export"
+    bl_label = "Export Menu Configuration"
+    filename_ext = ".json"
+    filter_glob: StringProperty(default="*.json", options={"HIDDEN"})
+
     def execute(self, context):
-        try: Path(self.filepath).write_text(_model().dumps(get_menu_config()), encoding="utf-8")
+        try:
+            Path(self.filepath).write_text(_model().dumps(get_menu_config()), encoding="utf-8")
         except (OSError, _model().MenuConfigError) as exc:
-            self.report({"ERROR"}, f"Export failed: {exc}"); return {"CANCELLED"}
-        self.report({"INFO"}, "Menu configuration exported"); return {"FINISHED"}
+            self.report({"ERROR"}, f"Export failed: {exc}")
+            return {"CANCELLED"}
+        self.report({"INFO"}, "Menu configuration exported")
+        return {"FINISHED"}
 
 
 def load_dialog_settings(operator, property_names):
     prefs = get()
-    if not prefs: return
-    try: settings = json.loads(prefs.dialog_settings).get(operator.bl_idname, {})
-    except (TypeError, ValueError): return
+    if not prefs:
+        return
+    try:
+        settings = json.loads(prefs.dialog_settings).get(operator.bl_idname, {})
+    except (TypeError, ValueError):
+        return
     for name in property_names:
         if name in settings:
-            try: setattr(operator, name, settings[name])
-            except (AttributeError, TypeError, ValueError): pass
+            try:
+                setattr(operator, name, settings[name])
+            except (AttributeError, TypeError, ValueError):
+                pass
 
 
 def save_dialog_settings(operator, property_names):
     prefs = get()
-    if not prefs: return
-    try: settings = json.loads(prefs.dialog_settings)
-    except (TypeError, ValueError): settings = {}
+    if not prefs:
+        return
+    try:
+        settings = json.loads(prefs.dialog_settings)
+    except (TypeError, ValueError):
+        settings = {}
     settings[operator.bl_idname] = {name: getattr(operator, name) for name in property_names}
     prefs.dialog_settings = json.dumps(settings, separators=(",", ":"))
 
@@ -617,10 +741,13 @@ def register():
         prefs = get()
         if prefs:
             if prefs.menu_config:
-                try: _model().loads(prefs.menu_config)
+                try:
+                    _model().loads(prefs.menu_config)
                 except _model().MenuConfigError:
-                    prefs.menu_config_recovery = prefs.menu_config; prefs.menu_config = _default_json()
-            else: prefs.menu_config = _default_json()
+                    prefs.menu_config_recovery = prefs.menu_config
+                    prefs.menu_config = _default_json()
+            else:
+                prefs.menu_config = _default_json()
     except Exception:
         for cls in reversed(registered):
             try:
@@ -631,4 +758,5 @@ def register():
 
 
 def unregister():
-    for cls in reversed(classes): bpy.utils.unregister_class(cls)
+    for cls in reversed(classes):
+        bpy.utils.unregister_class(cls)

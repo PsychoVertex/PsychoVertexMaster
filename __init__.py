@@ -12,20 +12,21 @@ from . import ModifiersMenu
 from . import AddMaterialToSelectedFaces
 from . import CreateEmptyParent
 from . import Preferences
+from . import Updater
 
 bl_info = {
     "name": "PsychoVertexMaster",
     "category": "3D View",
     "author": "Mohammad Zamanian",
     "location": "3D View > 'W' and 'D' keymaps",
-    "version": (1, 2, 2),
+    "version": (1, 3, 0),
     "blender": (3, 0, 0),
 }
 
 keymaps = []
 
 REGISTER_MODULES = (
-    Preferences, Pipeline, HandyUtils, UvTools, VertexColors, Lightmapping,
+    Preferences, Updater, Pipeline, HandyUtils, UvTools, VertexColors, Lightmapping,
     AssetBrowser, Collisions, HandyMenu, ChildControl, ModifiersMenu,
     AddMaterialToSelectedFaces, CreateEmptyParent,
 )

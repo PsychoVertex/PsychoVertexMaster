@@ -41,6 +41,19 @@ class MenuModelTests(unittest.TestCase):
             identifiers.extend(item["id"] for item in menu["items"])
         self.assertEqual(len(identifiers), len(set(identifiers)))
 
+    def test_native_default_entries_use_custom_item_types(self):
+        config = MODEL.load_default()
+        items = {
+            item["id"]: item
+            for menu, _parents in MODEL.walk_menus(config)
+            for item in menu["items"]
+        }
+        self.assertEqual(items["uv-clear-seam"]["type"], "custom_operator")
+        self.assertEqual(items["normal-flip"]["type"], "custom_operator")
+        self.assertEqual(items["export-fbx"]["type"], "custom_operator")
+        self.assertEqual(items["object-display"]["type"], "custom_property")
+        self.assertEqual(items["overlay-all"]["type"], "custom_property")
+
     def test_eight_item_limit(self):
         config = MODEL.clone_default()
         config["roots"]["edit"]["items"].append(

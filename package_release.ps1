@@ -6,7 +6,7 @@ $root = $PSScriptRoot
 $destination = Join-Path $root $Output
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
 if (Test-Path -LiteralPath $destination) { Remove-Item -LiteralPath $destination }
-$excludeDirectories = @('.git', 'release', 'backups', 'downloads', '__pycache__')
+$excludeDirectories = @('.git', 'release', 'backups', 'downloads', 'denoisers', '__pycache__')
 $excludeExtensions = @('.pyc', '.pyo')
 $files = Get-ChildItem -LiteralPath $root -Recurse -File | Where-Object {
     $relative = $_.FullName.Substring($root.Length).TrimStart('\', '/')

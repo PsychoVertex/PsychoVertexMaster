@@ -11,13 +11,23 @@ Keep changes small and compatible with Blender's Python API. Do not build or lau
 - `Lightmapping/__init__.py`: UV scaling/packing, collection realization and batching, baking, denoising, material integration, lighting preview, and cleanup.
 - `Lightmapping/Denoisers.py`: polymorphic denoising backends, external-process lifecycle, full-resolution pixel validation, temporary image conversion, and shared atomic EXR writing.
 - `Preferences.py`: persistent add-on settings, external OIDN/OptiX executable paths, and fixed-source denoiser download/install operators.
+- `Updater.py`: asynchronous GitHub release checks, per-release dismissal, startup alert policy, archive validation, transactional in-place installation, and restart notification.
 - `Pipeline.py`: modal task runner used by `UnpackCollections` and `BakeBatch`. It gives every task an announcement/redraw tick and supports item-level header and progress updates through `set_pipeline_detail(text, current, total)`.
 - `HandyMenu/__init__.py`: exposes lightmapping operators in edit/object mode menus.
+- `HandyMenu/default_menu.json`: shipped menu layout. Blender-native operators/properties belong in `custom_operator`/`custom_property` entries; reserve `plugin_action` for PsychoVertexMaster behavior or curated integrations that need availability logic.
 - `UvTools/__init__.py`: general UV-layer utilities; related but separate from the lightmapping packer.
 - `HandyUtils/BlenderToUnreal.py`: configures Unreal/BFU lightmap export settings; do not confuse this with the custom baked-lightmap workflow.
 - `UNREAL_ENGINE_ASSETS_EXPORTER.md`: audited technical contract for Unreal Engine Assets Exporter/BFU 4.4.3, including its pipeline, RNA properties, enum values, generated files, Unreal importer, and PVM integration risks.
 - `LIGHTMAPPING_WORKFLOW.md`: user-facing, in-depth setup and operation guide for the custom lightmapping pipeline; keep it aligned with workflow or UI changes.
 - Root `__init__.py`: module registration order and add-on metadata.
+
+## Update System
+
+- Stable updates come only from `https://api.github.com/repos/PsychoVertex/PsychoVertexMaster/releases/latest`; release tags must use numeric `vMAJOR.MINOR.PATCH` or `MAJOR.MINOR.PATCH` form and match `bl_info["version"]` inside the archive.
+- Startup checks must remain non-blocking and must not call Blender APIs from the worker thread. Blender interaction is delivered through a registered main-thread timer.
+- `auto_update_alerts` defaults on. Disabling it suppresses startup checks/dialogs but never disables the manual **Check for Updates** action. `ignored_update_version` suppresses only the exact dismissed release.
+- Update archives must pass download-size, expanded-size, traversal, symlink, add-on-root, and version validation before installation.
+- In-place installation preserves `.git`, `backups`, `denoisers`, and `__pycache__`, replaces files transactionally with rollback on handled failure, and requires Blender restart. Do not add automatic deletion of stale paths without a versioned manifest and explicit safety design.
 
 ## Unreal Export Integration
 

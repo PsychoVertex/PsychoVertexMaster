@@ -6,22 +6,22 @@
       "label": "Edit Mode",
       "items": [
         {"id":"edit-uv","type":"submenu","enabled":true,"label":"UV","icon":"UV","menu":{"id":"menu-uv","label":"UV","items":[
-          {"id":"uv-clear-seam","type":"plugin_action","enabled":true,"action":"uv.clear_seam"},
-          {"id":"uv-mark-seam","type":"plugin_action","enabled":true,"action":"uv.mark_seam"},
-          {"id":"uv-reset","type":"plugin_action","enabled":true,"action":"uv.reset"},
-          {"id":"uv-unwrap","type":"plugin_action","enabled":true,"action":"uv.unwrap"},
-          {"id":"uv-project","type":"plugin_action","enabled":true,"action":"uv.project_view"}
+          {"id":"uv-clear-seam","type":"custom_operator","enabled":true,"label":"Clear Seam","icon":"REMOVE","operator_id":"mesh.mark_seam","properties":{"clear":true}},
+          {"id":"uv-mark-seam","type":"custom_operator","enabled":true,"label":"Mark Seam","icon":"ADD","operator_id":"mesh.mark_seam","properties":{}},
+          {"id":"uv-reset","type":"custom_operator","enabled":true,"label":"Reset UVs","icon":"X","operator_id":"uv.reset","properties":{}},
+          {"id":"uv-unwrap","type":"custom_operator","enabled":true,"label":"Conformal","icon":"MOD_SHRINKWRAP","operator_id":"uv.unwrap","properties":{}},
+          {"id":"uv-project","type":"custom_operator","enabled":true,"label":"View Project","icon":"PROP_PROJECTED","operator_id":"uv.project_from_view","properties":{"scale_to_bounds":false}}
         ]}},
         {"id":"edit-mesh","type":"submenu","enabled":true,"label":"Mesh","icon":"MESH_DATA","menu":{"id":"menu-mesh","label":"Mesh","items":[
-          {"id":"mesh-clear-sharp","type":"plugin_action","enabled":true,"action":"mesh.clear_sharp"},
-          {"id":"mesh-mark-sharp","type":"plugin_action","enabled":true,"action":"mesh.mark_sharp"},
+          {"id":"mesh-clear-sharp","type":"custom_operator","enabled":true,"label":"Clear Sharp","icon":"REMOVE","operator_id":"mesh.mark_sharp","properties":{"clear":true}},
+          {"id":"mesh-mark-sharp","type":"custom_operator","enabled":true,"label":"Mark Sharp","icon":"ADD","operator_id":"mesh.mark_sharp","properties":{}},
           {"id":"mesh-edge-flow","type":"plugin_action","enabled":true,"action":"mesh.edge_flow"},
           {"id":"mesh-add-material","type":"plugin_action","enabled":true,"action":"mesh.add_material"},
           {"id":"mesh-remove-checker","type":"plugin_action","enabled":true,"action":"mesh.remove_checker"}
         ]}},
         {"id":"edit-normals","type":"submenu","enabled":true,"label":"Normals","icon":"NORMALS_VERTEX","menu":{"id":"menu-normals","label":"Normals","items":[
-          {"id":"normal-flip","type":"plugin_action","enabled":true,"action":"normal.flip"},
-          {"id":"normal-recalculate","type":"plugin_action","enabled":true,"action":"normal.recalculate"},
+          {"id":"normal-flip","type":"custom_operator","enabled":true,"label":"Flip","icon":"ORIENTATION_NORMAL","operator_id":"mesh.flip_normals","properties":{}},
+          {"id":"normal-recalculate","type":"custom_operator","enabled":true,"label":"Recalculate","icon":"NORMALS_VERTEX_FACE","operator_id":"mesh.normals_make_consistent","properties":{}},
           {"id":"normal-weight","type":"submenu","enabled":true,"label":"Weight","icon":"MOD_VERTEX_WEIGHT","menu":{"id":"menu-weight","label":"Weight","items":[
             {"id":"weight-empty-1","type":"separator","enabled":true},
             {"id":"weight-empty-2","type":"separator","enabled":true},
@@ -32,16 +32,16 @@
             {"id":"weight-select-weak","type":"plugin_action","enabled":true,"action":"weight.select_weak"},
             {"id":"weight-select-strong","type":"plugin_action","enabled":true,"action":"weight.select_strong"}
           ]}},
-          {"id":"normal-reset","type":"plugin_action","enabled":true,"action":"normal.reset"},
-          {"id":"normal-rotate","type":"plugin_action","enabled":true,"action":"normal.rotate"}
+          {"id":"normal-reset","type":"custom_operator","enabled":true,"label":"Reset Normal","icon":"SHADERFX","operator_id":"mesh.normals_tools","properties":{"mode":"RESET"}},
+          {"id":"normal-rotate","type":"custom_operator","enabled":true,"label":"Rotate","icon":"NORMALS_VERTEX","operator_id":"transform.rotate_normal","properties":{}}
         ]}},
         {"id":"edit-selection","type":"submenu","enabled":true,"label":"Selection","icon":"RESTRICT_SELECT_OFF","menu":{"id":"menu-selection","label":"Selection","items":[
-          {"id":"select-rings","type":"plugin_action","enabled":true,"action":"select.rings"},
-          {"id":"select-loops","type":"plugin_action","enabled":true,"action":"select.loops"},
-          {"id":"select-boundary","type":"plugin_action","enabled":true,"action":"select.boundary"},
-          {"id":"select-checker","type":"plugin_action","enabled":true,"action":"select.checker"},
-          {"id":"select-inside","type":"plugin_action","enabled":true,"action":"select.inside"},
-          {"id":"select-coplanar","type":"plugin_action","enabled":true,"action":"select.coplanar"},
+          {"id":"select-rings","type":"custom_operator","enabled":true,"label":"Rings","icon":"MESH_CIRCLE","operator_id":"mesh.loop_multi_select","properties":{"ring":true}},
+          {"id":"select-loops","type":"custom_operator","enabled":true,"label":"Loops","icon":"STROKE","operator_id":"mesh.loop_multi_select","properties":{"ring":false}},
+          {"id":"select-boundary","type":"custom_operator","enabled":true,"label":"Boundary","icon":"MOD_LATTICE","operator_id":"mesh.region_to_loop","properties":{}},
+          {"id":"select-checker","type":"custom_operator","enabled":true,"label":"Checker","icon":"TEXTURE","operator_id":"mesh.select_nth","properties":{}},
+          {"id":"select-inside","type":"custom_operator","enabled":true,"label":"Inside","icon":"OUTLINER_OB_LATTICE","operator_id":"mesh.loop_to_region","properties":{}},
+          {"id":"select-coplanar","type":"custom_operator","enabled":true,"label":"Coplanar","icon":"FACESEL","operator_id":"mesh.select_similar","properties":{"type":"FACE_COPLANAR"}},
           {"id":"select-overlap","type":"plugin_action","enabled":true,"action":"select.overlap"}
         ]}},
         {"id":"edit-vcolor","type":"submenu","enabled":true,"label":"Vertex Color","icon":"GROUP_VCOL","menu":{"id":"menu-vcolor","label":"Vertex Color","items":[
@@ -73,16 +73,16 @@
       "label": "Object Mode",
       "items": [
         {"id":"object-main","type":"submenu","enabled":true,"label":"Object","icon":"OBJECT_DATA","menu":{"id":"menu-object","label":"Object","items":[
-          {"id":"object-display","type":"plugin_action","enabled":true,"action":"object.display_type"},
-          {"id":"object-smooth","type":"plugin_action","enabled":true,"action":"object.auto_smooth"},
+          {"id":"object-display","type":"custom_property","enabled":true,"label":"Display Type","icon":"NODE_MATERIAL","property_path":"context.active_object.display_type"},
+          {"id":"object-smooth","type":"custom_property","enabled":true,"label":"Auto Smooth","icon":"MOD_SMOOTH","property_path":"context.active_object.data.use_auto_smooth"},
           {"id":"object-history","type":"plugin_action","enabled":true,"action":"object.history"},
           {"id":"object-parent-each","type":"plugin_action","enabled":true,"action":"object.parent_each"},
           {"id":"object-parent-active","type":"plugin_action","enabled":true,"action":"object.parent_active"},
           {"id":"object-parent","type":"plugin_action","enabled":true,"action":"object.parent"}
         ]}},
         {"id":"object-export","type":"submenu","enabled":true,"label":"Import + Export","icon":"EXPORT","menu":{"id":"menu-export","label":"Import + Export","items":[
-          {"id":"export-import-fbx","type":"plugin_action","enabled":true,"action":"export.import_fbx"},
-          {"id":"export-fbx","type":"plugin_action","enabled":true,"action":"export.fbx"},
+          {"id":"export-import-fbx","type":"custom_operator","enabled":true,"label":"Import FBX","icon":"IMPORT","operator_id":"import_scene.fbx","properties":{}},
+          {"id":"export-fbx","type":"custom_operator","enabled":true,"label":"Export FBX","icon":"EXPORT","operator_id":"export_scene.fbx","properties":{}},
           {"id":"export-batch","type":"plugin_action","enabled":true,"action":"export.batch"}
         ]}},
         {"id":"object-lightmap","type":"submenu","enabled":true,"label":"Lightmapping","icon":"LIGHT","menu":{"id":"menu-lightmap-object","label":"Lightmapping","items":[
@@ -98,9 +98,9 @@
         {"id":"object-overlay","type":"submenu","enabled":true,"label":"Display Overlays","icon":"OVERLAY","menu":{"id":"menu-overlay","label":"Display Overlays","items":[
           {"id":"overlay-collision","type":"plugin_action","enabled":true,"action":"overlay.collisions"},
           {"id":"overlay-lighting","type":"plugin_action","enabled":true,"action":"overlay.lighting"},
-          {"id":"overlay-all","type":"plugin_action","enabled":true,"action":"overlay.all"},
-          {"id":"overlay-wire","type":"plugin_action","enabled":true,"action":"overlay.wire"},
-          {"id":"overlay-faces","type":"plugin_action","enabled":true,"action":"overlay.faces"}
+          {"id":"overlay-all","type":"custom_property","enabled":true,"label":"Show Overlays","icon":"OVERLAY","property_path":"context.space_data.overlay.show_overlays"},
+          {"id":"overlay-wire","type":"custom_property","enabled":true,"label":"Show Wireframes","icon":"SHADING_WIRE","property_path":"context.space_data.overlay.show_wireframes"},
+          {"id":"overlay-faces","type":"custom_property","enabled":true,"label":"Face Orientation","icon":"FACESEL","property_path":"context.space_data.overlay.show_face_orientation"}
         ]}},
         {"id":"object-unreal","type":"submenu","enabled":true,"label":"To Unreal","icon":"EXPORT","menu":{"id":"menu-unreal","label":"To Unreal","items":[
           {"id":"unreal-setup","type":"plugin_action","enabled":true,"action":"unreal.setup"},
@@ -118,8 +118,8 @@
           {"id":"collision-convex-object","type":"plugin_action","enabled":true,"action":"collision.convex"}
         ]}},
         {"id":"object-utils","type":"submenu","enabled":true,"label":"Utils","icon":"OBJECT_ORIGIN","menu":{"id":"menu-utils-object","label":"Utils","items":[
-          {"id":"copy-modifiers","type":"plugin_action","enabled":true,"action":"object.copy_modifiers"},
-          {"id":"copy-materials","type":"plugin_action","enabled":true,"action":"object.copy_materials"},
+          {"id":"copy-modifiers","type":"custom_operator","enabled":true,"label":"Copy Modifiers From Active","icon":"MODIFIER","operator_id":"object.make_links_data","properties":{"type":"MODIFIERS"}},
+          {"id":"copy-materials","type":"custom_operator","enabled":true,"label":"Copy Materials From Active","icon":"MATERIAL","operator_id":"object.make_links_data","properties":{"type":"MATERIAL"}},
           {"id":"origins-active","type":"plugin_action","enabled":true,"action":"object.origins_active"},
           {"id":"add-active","type":"plugin_action","enabled":true,"action":"object.add_active"},
           {"id":"replace-active","type":"plugin_action","enabled":true,"action":"object.replace_active"}
@@ -132,8 +132,8 @@
       "items": [
         {"id":"no-empty","type":"separator","enabled":true},
         {"id":"no-export","type":"submenu","enabled":true,"label":"Import + Export","icon":"EXPORT","menu":{"id":"menu-export-no-active","label":"Import + Export","items":[
-          {"id":"no-import-fbx","type":"plugin_action","enabled":true,"action":"export.import_fbx"},
-          {"id":"no-export-fbx","type":"plugin_action","enabled":true,"action":"export.fbx"}
+          {"id":"no-import-fbx","type":"custom_operator","enabled":true,"label":"Import FBX","icon":"IMPORT","operator_id":"import_scene.fbx","properties":{}},
+          {"id":"no-export-fbx","type":"custom_operator","enabled":true,"label":"Export FBX","icon":"EXPORT","operator_id":"export_scene.fbx","properties":{}}
         ]}},
         {"id":"no-lightmap","type":"submenu","enabled":true,"label":"Lightmapping","icon":"LIGHT","menu":{"id":"menu-lightmap-no-active","label":"Lightmapping","items":[
           {"id":"no-lm-unpack","type":"plugin_action","enabled":true,"action":"lightmap.unpack"},
@@ -148,9 +148,9 @@
         {"id":"no-overlay","type":"submenu","enabled":true,"label":"Display Overlays","icon":"OVERLAY","menu":{"id":"menu-overlay-no-active","label":"Display Overlays","items":[
           {"id":"no-overlay-collision","type":"plugin_action","enabled":true,"action":"overlay.collisions"},
           {"id":"no-overlay-lighting","type":"plugin_action","enabled":true,"action":"overlay.lighting"},
-          {"id":"no-overlay-all","type":"plugin_action","enabled":true,"action":"overlay.all"},
-          {"id":"no-overlay-wire","type":"plugin_action","enabled":true,"action":"overlay.wire"},
-          {"id":"no-overlay-faces","type":"plugin_action","enabled":true,"action":"overlay.faces"}
+          {"id":"no-overlay-all","type":"custom_property","enabled":true,"label":"Show Overlays","icon":"OVERLAY","property_path":"context.space_data.overlay.show_overlays"},
+          {"id":"no-overlay-wire","type":"custom_property","enabled":true,"label":"Show Wireframes","icon":"SHADING_WIRE","property_path":"context.space_data.overlay.show_wireframes"},
+          {"id":"no-overlay-faces","type":"custom_property","enabled":true,"label":"Face Orientation","icon":"FACESEL","property_path":"context.space_data.overlay.show_face_orientation"}
         ]}}
       ]
     }

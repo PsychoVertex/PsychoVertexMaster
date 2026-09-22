@@ -78,46 +78,20 @@ def _edge_mode(context):
     return bool(context.tool_settings.mesh_select_mode[1])
 
 
-def _coplanar_mode(context):
-    mode = context.tool_settings.mesh_select_mode
-    return bool(mode[2] and not mode[0] and not mode[1])
-
-
-def _has_mesh(context):
-    return bool(context.active_object and context.active_object.type == "MESH")
-
-
 def _has_history(_context):
     return panel_exists("DATA_PT_PsychoHistory_KM")
 
 
 ACTION_CATALOG = {
-    "uv.clear_seam": _op("Clear Seam", "REMOVE", "mesh.mark_seam", {"clear": True}),
-    "uv.mark_seam": _op("Mark Seam", "ADD", "mesh.mark_seam"),
-    "uv.reset": _op("Reset UVs", "X", "uv.reset"),
-    "uv.unwrap": _op("Conformal", "MOD_SHRINKWRAP", "uv.unwrap"),
-    "uv.project_view": _op("View Project", "PROP_PROJECTED", "uv.project_from_view", {"scale_to_bounds": False}),
-    "mesh.clear_sharp": _op("Clear Sharp", "REMOVE", "mesh.mark_sharp", {"clear": True}),
-    "mesh.mark_sharp": _op("Mark Sharp", "ADD", "mesh.mark_sharp"),
     "mesh.edge_flow": _op("Set Flow", "SPHERECURVE", "mesh.set_edge_flow", available=_edge_mode),
     "mesh.add_material": _op("Add Material", "MATERIAL", "object.add_mat_sel_faces", available=_face_mode),
     "mesh.remove_checker": _op("Remove Checker", "X", "mesh.remove_checker", available=_edge_mode),
-    "normal.flip": _op("Flip", "ORIENTATION_NORMAL", "mesh.flip_normals"),
-    "normal.recalculate": _op("Recalculate", "NORMALS_VERTEX_FACE", "mesh.normals_make_consistent"),
-    "normal.reset": _op("Reset Normal", "SHADERFX", "mesh.normals_tools", {"mode": "RESET"}),
-    "normal.rotate": _op("Rotate", "NORMALS_VERTEX", "transform.rotate_normal"),
     "weight.select_weak": _op("Select Weak", "RESTRICT_SELECT_ON", "mesh.mzage_select_weight", {"strength": "WEAK"}),
     "weight.select_medium": _op("Select Medium", "RESTRICT_SELECT_ON", "mesh.mzage_select_weight", {"strength": "MEDIUM"}),
     "weight.select_strong": _op("Select Strong", "RESTRICT_SELECT_ON", "mesh.mzage_select_weight", {"strength": "STRONG"}),
     "weight.set_weak": _op("Set Weak", "RESTRICT_SELECT_OFF", "mesh.mzage_set_weight", {"strength": "WEAK"}),
     "weight.set_medium": _op("Set Medium", "RESTRICT_SELECT_OFF", "mesh.mzage_set_weight", {"strength": "MEDIUM"}),
     "weight.set_strong": _op("Set Strong", "RESTRICT_SELECT_OFF", "mesh.mzage_set_weight", {"strength": "STRONG"}),
-    "select.rings": _op("Rings", "MESH_CIRCLE", "mesh.loop_multi_select", {"ring": True}),
-    "select.loops": _op("Loops", "STROKE", "mesh.loop_multi_select", {"ring": False}),
-    "select.boundary": _op("Boundary", "MOD_LATTICE", "mesh.region_to_loop"),
-    "select.checker": _op("Checker", "TEXTURE", "mesh.select_nth"),
-    "select.inside": _op("Inside", "OUTLINER_OB_LATTICE", "mesh.loop_to_region"),
-    "select.coplanar": _op("Coplanar", "FACESEL", "mesh.select_similar", {"type": "FACE_COPLANAR"}, _coplanar_mode),
     "select.overlap": _op("Overlapping Vertices", "VERTEXSEL", "mesh.select_overlapping_vertices"),
     "vcolor.copy": _op("Copy Vertex Color", "COPYDOWN", "mesh.copy_vertex_color"),
     "vcolor.paste": _op("Paste Vertex Color", "PASTEDOWN", "mesh.paste_vertex_color"),
@@ -145,14 +119,10 @@ ACTION_CATALOG = {
     "object.parent_each": _op("Create Parent for Each", "EMPTY_DATA", "object.create_empty_parent_foreach"),
     "object.parent_active": _op("Parent to Active", "EMPTY_DATA", "object.create_empty_parent_active"),
     "object.history": _op("Object History", "LOOP_BACK", "wm.call_panel", {"name": "DATA_PT_PsychoHistory_KM"}, _has_history),
-    "object.copy_modifiers": _op("Copy Modifiers From Active", "MODIFIER", "object.make_links_data", {"type": "MODIFIERS"}),
-    "object.copy_materials": _op("Copy Materials From Active", "MATERIAL", "object.make_links_data", {"type": "MATERIAL"}),
     "object.origins_active": _op("Set Origins To Active", "TRANSFORM_ORIGINS", "object.selected_origins_to_active"),
     "object.add_active": _op("Add Active In Place", "DUPLICATE", "object.add_active_in_place_of_selected"),
     "object.replace_active": _op("Replace With Active", "FILE_REFRESH", "object.replace_selected_with_active"),
     "asset.create": _op("Make Collection Asset", "ASSET_MANAGER", "assetbrowser.make_collection_asset_from_selection"),
-    "export.import_fbx": _op("Import FBX", "IMPORT", "import_scene.fbx"),
-    "export.fbx": _op("Export FBX", "EXPORT", "export_scene.fbx"),
     "export.batch": _op("Batch Export SM_", "EXPORT", "object.batch_export_selections_as_sm"),
     "unreal.setup": _op("Setup for export", "SHADERFX", "object.btus_setup"),
     "unreal.export": _op("Set Export", "FAKE_USER_ON", "object.btus_export"),
@@ -161,20 +131,9 @@ ACTION_CATALOG = {
 }
 
 PROPERTY_ACTIONS = {
-    "object.display_type": ("Display Type", "NODE_MATERIAL", lambda c: c.active_object, "display_type", _has_mesh),
-    "object.auto_smooth": ("Auto Smooth", "MOD_SMOOTH", lambda c: c.active_object.data, "use_auto_smooth", _has_mesh),
     "overlay.collisions": ("Display Collisions", "SHADING_BBOX", lambda c: c.scene, "display_collisions", None),
     "overlay.lighting": ("Display Lighting", "LIGHT", lambda c: c.scene, "display_lighting", None),
-    "overlay.all": ("Show Overlays", "OVERLAY", lambda c: c.space_data.overlay, "show_overlays", lambda c: hasattr(c.space_data, "overlay")),
-    "overlay.wire": ("Show Wireframes", "SHADING_WIRE", lambda c: c.space_data.overlay, "show_wireframes", lambda c: hasattr(c.space_data, "overlay")),
-    "overlay.faces": ("Face Orientation", "FACESEL", lambda c: c.space_data.overlay, "show_face_orientation", lambda c: hasattr(c.space_data, "overlay")),
 }
-
-# Preserve presentation details from the original hard-coded pie menus.
-PROPERTY_PIE_TEXT = {
-    "object.display_type": "",
-}
-
 
 def _configuration():
     prefs = Preferences.get()
@@ -217,7 +176,7 @@ def _draw_action(layout, item, context, pie=False):
             if label.strip().upper() == "HIDDEN":
                 text = ""
             else:
-                text = PROPERTY_PIE_TEXT.get(action_id, label) if pie else label
+                text = label
             layout.prop(owner, prop_name, text=text, icon=icon)
         else:
             layout.separator()
