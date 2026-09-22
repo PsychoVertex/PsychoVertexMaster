@@ -6,6 +6,12 @@ PsychoVertexMaster is a Blender add-on package. The package entry point is `__in
 
 Keep changes small and compatible with Blender's Python API. Do not build or launch Blender automatically. Ask the user to install/reload the add-on and test Blender-dependent behavior.
 
+## Git Workflow
+
+- Use `preview` as the development branch. Make and push all normal commits there, not directly on `main`.
+- When preparing a release, commit and push the final release changes to `preview`, merge `preview` into `main`, push `main`, and create the versioned release from `main`.
+- After publishing the release, switch back to `preview` and continue development there.
+
 ## Repository Map
 
 - `Lightmapping/__init__.py`: UV scaling/packing, collection realization and batching, baking, denoising, material integration, lighting preview, and cleanup.
