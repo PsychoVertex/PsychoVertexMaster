@@ -38,17 +38,23 @@ class SelectSameColorOperator(Operator):
             active_face.loops[0][color_layer]
         )
 
-        # clear selection
-        for f in mesh.faces:
-            f.select = False
+        objects = getattr(context, "objects_in_mode_unique_data", ())
+        for edit_obj in objects:
+            if edit_obj.type != 'MESH':
+                continue
+            edit_mesh = bmesh.from_edit_mesh(edit_obj.data)
+            edit_color_layer = edit_mesh.loops.layers.color.active
 
-        # compare using byte values
-        for face in mesh.faces:
-            col = self.color_to_byte_tuple(face.loops[0][color_layer])
-            if col == active_color:
-                face.select = True
+            for face in edit_mesh.faces:
+                face.select = False
 
-        bmesh.update_edit_mesh(obj.data, loop_triangles=False)
+            if edit_color_layer:
+                for face in edit_mesh.faces:
+                    col = self.color_to_byte_tuple(face.loops[0][edit_color_layer])
+                    if col == active_color:
+                        face.select = True
+
+            bmesh.update_edit_mesh(edit_obj.data, loop_triangles=False)
         return {'FINISHED'}
 
 

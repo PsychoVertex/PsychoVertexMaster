@@ -1,41 +1,31 @@
-from typing import cast, TYPE_CHECKING
+import ast
+import json
+import uuid
+
 import bpy
-from bpy.types import Mesh, Context
+from bpy.props import BoolProperty, EnumProperty, IntProperty, StringProperty
+from bpy.types import Context, Mesh
+
 from .. import Preferences
-if TYPE_CHECKING:
-    from bpy.stub_internal.rna_enums import IconItems
-WEIGHTED_NORMALS_MODIFIER_NAME = '__Weighted_Normal__'
+from . import model
 
 
-def is_class_registered(class_type):
-    try:
-        bpy.utils.register_class(class_type)
-    except Exception as e:
-        if "already registered" in str(e):
-            return True
-    return False
+WEIGHTED_NORMALS_MODIFIER_NAME = "__Weighted_Normal__"
+_dynamic_classes = []
+_menu_class_ids = {}
 
 
 def panel_exists(bl_idname):
-    for panel_cls in bpy.types.Panel.__subclasses__():
-        if not hasattr(panel_cls, "bl_idname"):
-            continue
-        if panel_cls.bl_idname != bl_idname:
-            continue
-        if is_class_registered(panel_cls):
-            return True
-    return False
+    return any(getattr(cls, "bl_idname", None) == bl_idname for cls in bpy.types.Panel.__subclasses__())
 
 
 class MZageHandyMenuSelectWeight(bpy.types.Operator):
     bl_idname = "mesh.mzage_select_weight"
     bl_label = "Select Weight"
-    bl_description = "tooltip"
     bl_options = {"REGISTER"}
+    strength: StringProperty(name="Weight")
 
-    strength: bpy.props.StringProperty(name="weight")
-
-    def execute(self, context: Context):
+    def execute(self, context):
         bpy.ops.mesh.mod_weighted_strength(set=False, face_strength=self.strength)
         return {"FINISHED"}
 
@@ -43,444 +33,354 @@ class MZageHandyMenuSelectWeight(bpy.types.Operator):
 class MZageHandyMenuSetWeight(bpy.types.Operator):
     bl_idname = "mesh.mzage_set_weight"
     bl_label = "Set Weight"
-    bl_description = "tooltip"
     bl_options = {"REGISTER", "UNDO"}
+    strength: StringProperty(name="Weight")
 
-    strength: bpy.props.StringProperty(name="weight")
-
-    def execute(self, context):
-        sos = context.selected_objects
-        ao = context.active_object
-        if ao not in sos:
-            sos.append(ao)
+    def execute(self, context: Context):
+        selected = list(context.selected_objects)
+        active = context.active_object
+        if active and active not in selected:
+            selected.append(active)
         bpy.ops.mesh.mod_weighted_strength(set=True, face_strength=self.strength)
-        bpy.ops.object.mode_set(mode='OBJECT')
-        for so in sos:
-            mesh = cast(Mesh, so.data)
-            if not WEIGHTED_NORMALS_MODIFIER_NAME in [mod.name for mod in so.modifiers]:
+        bpy.ops.object.mode_set(mode="OBJECT")
+        for obj in selected:
+            if obj.type != "MESH":
+                continue
+            mesh: Mesh = obj.data
+            if WEIGHTED_NORMALS_MODIFIER_NAME not in obj.modifiers:
                 sharpness = [edge.use_edge_sharp for edge in mesh.edges]
-                context.view_layer.objects.active = so
+                context.view_layer.objects.active = obj
                 bpy.ops.object.shade_smooth(keep_sharp_edges=True)
                 bpy.ops.mesh.customdata_custom_splitnormals_add()
-                for i, edge in enumerate(mesh.edges):
-                    edge.use_edge_sharp = sharpness[i]
-
-                mod = so.modifiers.new(name=WEIGHTED_NORMALS_MODIFIER_NAME, type='WEIGHTED_NORMAL')
-                mod.mode = 'FACE_AREA_WITH_ANGLE'
-                mod.weight = 100
-                mod.keep_sharp = True
-                mod.use_face_influence = True
-                mod.show_on_cage = True
-        bpy.ops.object.mode_set(mode='EDIT')
-        context.view_layer.objects.active = ao
+                for index, edge in enumerate(mesh.edges):
+                    edge.use_edge_sharp = sharpness[index]
+                modifier = obj.modifiers.new(WEIGHTED_NORMALS_MODIFIER_NAME, "WEIGHTED_NORMAL")
+                modifier.mode = "FACE_AREA_WITH_ANGLE"
+                modifier.weight = 100
+                modifier.keep_sharp = True
+                modifier.use_face_influence = True
+                modifier.show_on_cage = True
+        bpy.ops.object.mode_set(mode="EDIT")
+        context.view_layer.objects.active = active
         return {"FINISHED"}
 
 
-def PieMenuButton(container: bpy.types.UILayout, menu: bpy.types.Menu, icon: 'IconItems' = "NONE"):
-    container.operator('wm.call_menu_pie', text=menu.bl_label, icon=icon).name = menu.bl_idname
+def _op(label, icon, operator_id, properties=None, available=None):
+    return {"label": label, "icon": icon, "operator": operator_id,
+            "properties": properties or {}, "available": available}
+
+
+def _face_mode(context):
+    return bool(context.tool_settings.mesh_select_mode[2])
+
+
+def _edge_mode(context):
+    return bool(context.tool_settings.mesh_select_mode[1])
+
+
+def _has_history(_context):
+    return panel_exists("DATA_PT_PsychoHistory_KM")
+
+
+ACTION_CATALOG = {
+    "mesh.edge_flow": _op("Set Flow", "SPHERECURVE", "mesh.set_edge_flow", available=_edge_mode),
+    "mesh.add_material": _op("Add Material", "MATERIAL", "object.add_mat_sel_faces", available=_face_mode),
+    "mesh.remove_checker": _op("Remove Checker", "X", "mesh.remove_checker", available=_edge_mode),
+    "weight.select_weak": _op("Select Weak", "RESTRICT_SELECT_ON", "mesh.mzage_select_weight", {"strength": "WEAK"}),
+    "weight.select_medium": _op("Select Medium", "RESTRICT_SELECT_ON", "mesh.mzage_select_weight", {"strength": "MEDIUM"}),
+    "weight.select_strong": _op("Select Strong", "RESTRICT_SELECT_ON", "mesh.mzage_select_weight", {"strength": "STRONG"}),
+    "weight.set_weak": _op("Set Weak", "RESTRICT_SELECT_OFF", "mesh.mzage_set_weight", {"strength": "WEAK"}),
+    "weight.set_medium": _op("Set Medium", "RESTRICT_SELECT_OFF", "mesh.mzage_set_weight", {"strength": "MEDIUM"}),
+    "weight.set_strong": _op("Set Strong", "RESTRICT_SELECT_OFF", "mesh.mzage_set_weight", {"strength": "STRONG"}),
+    "select.overlap": _op("Overlapping Vertices", "VERTEXSEL", "mesh.select_overlapping_vertices"),
+    "vcolor.copy": _op("Copy Vertex Color", "COPYDOWN", "mesh.copy_vertex_color"),
+    "vcolor.paste": _op("Paste Vertex Color", "PASTEDOWN", "mesh.paste_vertex_color"),
+    "vcolor.paint": _op("Vertex Color HSV Paint", "BRUSH_DATA", "mesh.vertex_color_hsv_paint"),
+    "vcolor.select": _op("Select Same Vertex Color", "COLOR", "mesh.select_same_vertex_color"),
+    "lightmap.scale": _op("Set Lightmap Scale", "FIXED_SIZE", "lightmap.set_scale"),
+    "lightmap.pack": _op("Scaled UV Packing", "UV", "lightmap.scaled_uv_packing"),
+    "lightmap.unpack": _op("Unpack All", "ACTION", "lightmap.unpack_collections"),
+    "lightmap.clear": _op("Clear", "REMOVE", "lightmap.clear_lightmapping_stuff"),
+    "lightmap.bake": _op("Bake", "LIGHT_DATA", "lightmap.bake_batch"),
+    "lightmap.denoise": _op("Denoise", "IMAGE_DATA", "lightmap.denoise_batch"),
+    "lightmap.restore_fillers": _op("Restore Fillers", "LOOP_BACK", "lightmap.clear_filler_replacements"),
+    "lightmap.replace_fillers": _op("Replace Fillers", "DUPLICATE", "lightmap.replace_fillers"),
+    "lightmap.unpack_active": _op("Unpack Active", "OUTLINER_COLLECTION", "lightmap.unpack_active_collection"),
+    "lightmap.repack_active": _op("Repack Active", "UV", "lightmap.repack_active_batch"),
+    "collision.box": _op("Add Box Collision", "SHADING_BBOX", "collision.add_box_collision_to_selected"),
+    "collision.sphere": _op("Add Sphere Collision", "MESH_UVSPHERE", "collision.add_sphere_collision_to_selected"),
+    "collision.capsule": _op("Add Capsule Collision", "META_CAPSULE", "collision.add_capsule_collision_to_selected"),
+    "collision.convex": _op("Add Convex Collision", "MESH_ICOSPHERE", "collision.add_convex_collision_to_selected"),
+    "util.origin_selection": _op("Origin to Selected", "OBJECT_ORIGIN", "mesh.set_origin_to_selection"),
+    "util.fix_rotation": _op("Fix Rotation", "OBJECT_ORIGIN", "mesh.set_origin_to_selection_and_rotate"),
+    "util.edge_length": _op("Get Edge Length", "DRIVER_DISTANCE", "mesh.get_edge_length"),
+    "util.edge_angle": _op("Get Edges Angle", "DRIVER_ROTATIONAL_DIFFERENCE", "mesh.get_edges_angle"),
+    "object.parent": _op("Create Empty Parent", "EMPTY_DATA", "object.create_empty_parent"),
+    "object.parent_each": _op("Create Parent for Each", "EMPTY_DATA", "object.create_empty_parent_foreach"),
+    "object.parent_active": _op("Parent to Active", "EMPTY_DATA", "object.create_empty_parent_active"),
+    "object.history": _op("Object History", "LOOP_BACK", "wm.call_panel", {"name": "DATA_PT_PsychoHistory_KM"}, _has_history),
+    "object.origins_active": _op("Set Origins To Active", "TRANSFORM_ORIGINS", "object.selected_origins_to_active"),
+    "object.add_active": _op("Add Active In Place", "DUPLICATE", "object.add_active_in_place_of_selected"),
+    "object.replace_active": _op("Replace With Active", "FILE_REFRESH", "object.replace_selected_with_active"),
+    "asset.create": _op("Make Collection Asset", "ASSET_MANAGER", "assetbrowser.make_collection_asset_from_selection"),
+    "export.batch": _op("Batch Export SM_", "EXPORT", "object.batch_export_selections_as_sm"),
+    "unreal.setup": _op("Setup for export", "SHADERFX", "object.btus_setup"),
+    "unreal.export": _op("Set Export", "FAKE_USER_ON", "object.btus_export"),
+    "unreal.noexport": _op("Set Dont Export", "FAKE_USER_OFF", "object.btus_dontexport"),
+    "unreal.path": _op("Update Path", "FILEBROWSER", "object.btus_updatepath"),
+}
+
+PROPERTY_ACTIONS = {
+    "overlay.collisions": ("Display Collisions", "SHADING_BBOX", lambda c: c.scene, "display_collisions", None),
+    "overlay.lighting": ("Display Lighting", "LIGHT", lambda c: c.scene, "display_lighting", None),
+}
+
+def _configuration():
+    prefs = Preferences.get()
+    if prefs:
+        try:
+            return model.loads(prefs.menu_config)
+        except model.MenuConfigError:
+            pass
+    return model.clone_default()
+
+
+def _root_key(context):
+    active = context.active_object
+    if not active:
+        return "no_active"
+    return "edit" if active.mode == "EDIT" else "object"
+
+
+def _operator_exists(operator_id):
+    try:
+        category, name = operator_id.split(".", 1)
+        return getattr(getattr(bpy.ops, category), name)
+    except (AttributeError, ValueError):
+        return None
+
+
+def _draw_action(layout, item, context, pie=False):
+    action_id = item.get("action")
+    if action_id in PROPERTY_ACTIONS:
+        label, icon, owner_getter, prop_name, check = PROPERTY_ACTIONS[action_id]
+        label, icon = item.get("label") or label, item.get("icon") or icon
+        try:
+            available = not check or check(context)
+            owner = owner_getter(context) if available else None
+            available = available and owner is not None and hasattr(owner, prop_name)
+        except Exception:
+            available = False
+            owner = None
+        if available:
+            if label.strip().upper() == "HIDDEN":
+                text = ""
+            else:
+                text = label
+            layout.prop(owner, prop_name, text=text, icon=icon)
+        else:
+            layout.separator()
+        return
+    action = ACTION_CATALOG.get(action_id)
+    if not action:
+        layout.separator()
+        return
+    label = item.get("label") or action["label"]
+    icon = item.get("icon") or action["icon"]
+    operator = _operator_exists(action["operator"])
+    if operator is None:
+        layout.separator()
+        return
+    button = layout.operator(action["operator"], text=label, icon=icon)
+    for name, value in action["properties"].items():
+        try:
+            setattr(button, name, value)
+        except (AttributeError, TypeError):
+            pass
+
+
+def _resolve_property_path(path, context):
+    model.parse_property_path(path)
+    node = ast.parse(path, mode="eval").body
+
+    def resolve(part):
+        if isinstance(part, ast.Name):
+            return context
+        if isinstance(part, ast.Attribute):
+            if isinstance(part.value, ast.Name) and part.value.id == "bpy":
+                return bpy.data
+            return getattr(resolve(part.value), part.attr)
+        return resolve(part.value)[part.slice.value]
+
+    if isinstance(node, ast.Attribute):
+        return resolve(node.value), node.attr, None
+    key = node.slice.value
+    if isinstance(key, int) and isinstance(node.value, ast.Attribute):
+        return resolve(node.value.value), node.value.attr, key
+    return resolve(node.value), f"[{json.dumps(key)}]", None
+
+
+def _draw_menu(layout, menu, context, pie):
+    target = layout.menu_pie() if pie else layout
+    target.operator_context = "INVOKE_DEFAULT"
+    # Disabled standard-menu entries remain visible. In a pie they do not
+    # consume one of Blender's eight physical slots, so later enabled items
+    # can still appear.
+    items = ([item for item in menu["items"] if item.get("enabled", True)][:8]
+             if pie else menu["items"])
+    for item in items:
+        item_type = item["type"]
+        if item_type == "separator":
+            target.separator()
+            continue
+        item_layout = target
+        label = item.get("label") or ""
+        icon = item.get("icon") or "NONE"
+        if not item.get("enabled", True):
+            if pie:
+                target.separator()
+                continue
+            item_layout = target.row()
+            item_layout.enabled = False
+        if item_type == "submenu":
+            class_id = _menu_class_ids.get(item["menu"]["id"])
+            if not class_id:
+                item_layout.separator()
+            elif pie:
+                item_layout.operator("wm.call_menu_pie", text=label or item["menu"]["label"], icon=icon).name = class_id
+            else:
+                item_layout.menu(class_id, text=label or item["menu"]["label"], icon=icon)
+        elif item_type == "plugin_action":
+            _draw_action(item_layout, item, context, pie)
+        elif item_type == "custom_operator":
+            operator = _operator_exists(item["operator_id"])
+            if operator is None:
+                item_layout.separator()
+            else:
+                button = item_layout.operator(item["operator_id"],
+                                              text=label or item["operator_id"], icon=icon)
+                for name, value in item.get("properties", {}).items():
+                    try:
+                        setattr(button, name, value)
+                    except (AttributeError, TypeError):
+                        pass
+        elif item_type == "custom_property":
+            try:
+                owner, prop_name, prop_index = _resolve_property_path(
+                    item["property_path"], context)
+                property_text = "" if label.strip().upper() == "HIDDEN" else label
+                property_layout = item_layout.row(align=True)
+                if not pie and prop_index is None:
+                    try:
+                        rna_property = owner.bl_rna.properties[prop_name]
+                        if rna_property.is_array:
+                            property_layout.ui_units_x = max(
+                                12.0, rna_property.array_length * 4.0)
+                    except (AttributeError, KeyError, TypeError):
+                        pass
+                if prop_index is None:
+                    property_layout.prop(owner, prop_name, text=property_text, icon=icon)
+                else:
+                    property_layout.prop(owner, prop_name, text=property_text,
+                                         icon=icon, index=prop_index)
+            except Exception:
+                item_layout.separator()
 
 
 class MZageHandyMenu(bpy.types.Menu):
-    bl_label = ""
+    bl_label = "Psycho Vertex Master"
     bl_idname = "OBJECT_MT_mzage_handy_menu"
 
     def draw(self, context):
-        ao = context.active_object
-        if Preferences.get_mode() == "PIE_MENUS":
-            pie = self.layout.menu_pie()
-
-            if not ao:
-                pie.separator()
-                PieMenuButton(pie, ExportSubMenu, icon='EXPORT')
-                PieMenuButton(pie, LightmappingSubMenu, icon='LIGHT')
-                PieMenuButton(pie, DisplayOverlaySubMenu, icon='OVERLAY')
-                return
-
-            if ao.mode == "EDIT":
-                PieMenuButton(pie, UVSubMenu, icon='UV')
-                PieMenuButton(pie, MeshSubMenu, icon='MESH_DATA')
-                PieMenuButton(pie, NormalsSubMenu, icon='NORMALS_VERTEX')
-                PieMenuButton(pie, SelectionSubMenu, icon='RESTRICT_SELECT_OFF')
-                PieMenuButton(pie, VertexColorSubMenu, icon='GROUP_VCOL')
-                PieMenuButton(pie, WeightSubMenu, icon='MOD_VERTEX_WEIGHT')
-                PieMenuButton(pie, LightmappingSubMenu, icon='LIGHT')
-                PieMenuButton(pie, UtilsSubMenu, icon='TOOL_SETTINGS')
-
-            elif ao.mode == "OBJECT":
-                PieMenuButton(pie, ObjectSubMenu, icon='OBJECT_DATA')
-                PieMenuButton(pie, ExportSubMenu, icon='EXPORT')
-                PieMenuButton(pie, LightmappingSubMenu, icon='LIGHT')
-                PieMenuButton(pie, DisplayOverlaySubMenu, icon='OVERLAY')
-                PieMenuButton(pie, ToUnrealSubMenu, icon='EXPORT')
-                PieMenuButton(pie, AssetBrowserSubMenu, icon='ASSET_MANAGER')
-                pie.separator()
-                PieMenuButton(pie, ObjectModeUtilsSubMenu, icon='OBJECT_ORIGIN')
-        else:
-            layout = self.layout
-            layout.operator_context = 'INVOKE_DEFAULT'
-            if ao:
-                mode = ao.mode
-                if mode == "EDIT":
-                    row = layout.row()
-                    col = row.column()
-                    col.label(text="UV")
-                    col.operator("mesh.mark_seam", text="Mark Seam", icon="GREASEPENCIL")
-                    col.operator("mesh.mark_seam", text="Clear Seam", icon="OUTLINER_DATA_GP_LAYER").clear = True
-                    col.operator("uv.unwrap", text="Unwrap", icon="MOD_SHRINKWRAP")
-                    col.operator("uv.project_from_view", text="View Project", icon="PROP_PROJECTED").scale_to_bounds = False
-                    col.operator("uv.reset", text="Reset UVs", icon="X")
-                    col.separator()
-                    col.label(text="Mesh")
-                    if bpy.context.tool_settings.mesh_select_mode[1]:
-                        col.operator("mesh.set_edge_flow", text="Set Flow", icon="SPHERECURVE")
-                        col.operator("mesh.remove_checker", text="Remove Checker", icon="X")
-                    col.operator("mesh.mark_sharp", text="Mark Sharp", icon="GREASEPENCIL")
-                    col.operator("mesh.mark_sharp", text="Clear Sharp", icon="OUTLINER_DATA_GP_LAYER").clear = True
-                    if bpy.context.tool_settings.mesh_select_mode[2]:
-                        col.operator("object.add_mat_sel_faces", text="Add Material", icon="MATERIAL")
-
-                    col.separator()
-                    col.label(text="Vertex Color")
-                    col.operator("mesh.vertex_color_hsv_paint", icon="BRUSH_DATA")
-                    col.operator("mesh.select_same_vertex_color", icon="COLOR")
-                    col.operator("mesh.copy_vertex_color", icon="COPYDOWN")
-                    col.operator("mesh.paste_vertex_color", icon="PASTEDOWN")
-
-                    col = row.column()
-                    col.label(text="Normals")
-                    col.operator("mesh.flip_normals", text="Flip", icon="ORIENTATION_NORMAL")
-                    col.operator("mesh.normals_make_consistent", text="Recalculate", icon="NORMALS_VERTEX_FACE")
-                    col.operator("transform.rotate_normal", text="Rotate", icon="NORMALS_VERTEX")
-                    col.operator("mesh.normals_tools", text="Reset Normal", icon="SHADERFX").mode = "RESET"
-
-                    col.separator()
-                    col.operator(MZageHandyMenuSelectWeight.bl_idname, text="Select Weak", icon="RESTRICT_SELECT_ON").strength = 'WEAK'
-                    col.operator(MZageHandyMenuSelectWeight.bl_idname, text="Select Medium", icon="RESTRICT_SELECT_ON").strength = 'MEDIUM'
-                    col.operator(MZageHandyMenuSelectWeight.bl_idname, text="Select Strong", icon="RESTRICT_SELECT_ON").strength = 'STRONG'
-
-                    col.separator()
-                    col.operator(MZageHandyMenuSetWeight.bl_idname, text="Set Weak", icon="RESTRICT_SELECT_OFF").strength = 'WEAK'
-                    col.operator(MZageHandyMenuSetWeight.bl_idname, text="Set Medium", icon="RESTRICT_SELECT_OFF").strength = 'MEDIUM'
-                    col.operator(MZageHandyMenuSetWeight.bl_idname, text="Set Strong", icon="RESTRICT_SELECT_OFF").strength = 'STRONG'
-
-                    col.separator()
-                    col.label(text="Lightmapping")
-                    col.operator("lightmap.set_scale", icon="FIXED_SIZE")
-                    col.operator("lightmap.scaled_uv_packing", icon="UV")
-
-                    col = row.column()
-                    col.label(text="Selection")
-                    col.operator("mesh.loop_multi_select", text="Select Rings", icon="MESH_CIRCLE").ring = True
-                    col.operator("mesh.loop_multi_select", text="Select Loops", icon="STROKE").ring = False
-                    col.operator("mesh.region_to_loop", text="Select Boundary", icon="MOD_LATTICE")
-                    col.operator("mesh.loop_to_region", text="Select Inside", icon="OUTLINER_OB_LATTICE")
-                    col.operator("mesh.select_nth", text="Checker Deselect", icon="TEXTURE")
-                    if bpy.context.tool_settings.mesh_select_mode[2] and not bpy.context.tool_settings.mesh_select_mode[0] and not bpy.context.tool_settings.mesh_select_mode[1]:
-                        col.operator("mesh.select_similar", text="Select Coplanar", icon="FACESEL").type = "FACE_COPLANAR"
-                    col.operator("mesh.select_overlapping_vertices", text="Overlap Vert", icon="VERTEXSEL")
-
-                    col.separator()
-                    col.label(text="Utils")
-                    col.operator("mesh.set_origin_to_selection", text="Origin to Selected", icon="OBJECT_ORIGIN")
-                    col.operator("mesh.set_origin_to_selection_and_rotate", text="Fix Rotation", icon="OBJECT_ORIGIN")
-                    col.operator("collision.add_box_collision_to_selected", icon="SHADING_BBOX")
-                    col.operator("mesh.get_edge_length", icon="DRIVER_DISTANCE")
-                    col.operator("mesh.get_edges_angle", icon="DRIVER_ROTATIONAL_DIFFERENCE")
-                    # col.operator("mesh.snap_vertices_to_surface", icon="MOD_SHRINKWRAP")
-
-                elif mode == "OBJECT":
-                    row = layout.row()
-                    col = row.column()
-
-                    col.label(text="Object")
-                    if ao.type == "MESH":
-                        col.prop(ao, "display_type", text="", icon="NODE_MATERIAL")
-                        col.prop(ao.data, "use_auto_smooth", icon="MOD_SMOOTH")
-                    col.operator("object.create_empty_parent", icon="EMPTY_DATA")
-                    col.operator("object.create_empty_parent_foreach", icon="EMPTY_DATA")
-                    col.operator("object.create_empty_parent_active", icon="EMPTY_DATA")
-                    if panel_exists("DATA_PT_PsychoHistory_KM"):
-                        col.operator("wm.call_panel", text="Object History", icon="LOOP_BACK").name = "DATA_PT_PsychoHistory_KM"
-
-                    col.separator()
-                    col.label(text="Copy From Active")
-                    col.operator("object.make_links_data", text="Copy Modifiers", icon="MODIFIER").type = "MODIFIERS"
-                    col.operator("object.make_links_data", text="Copy Materials", icon="MATERIAL").type = "MATERIAL"
-
-                    col.separator()
-                    col.label(text="Copy To Active")
-                    col.operator("object.selected_origins_to_active", text="Origins To Active", icon="TRANSFORM_ORIGINS")
-
-                    col.separator()
-                    col.label(text="Asset Browser")
-                    col.operator("assetbrowser.make_collection_asset_from_selection", icon="ASSET_MANAGER")
-
-                    col = row.column()
-                    col.label(text="Lightmapping")
-                    col.operator("lightmap.unpack_collections", icon="ACTION")
-                    col.operator("lightmap.bake_batch", icon="LIGHT_DATA")
-                    col.operator("lightmap.clear_lightmapping_stuff", icon="REMOVE")
-
-                    col = row.column()
-                    col.label(text="Display Overlays")
-                    col.prop(context.area.spaces[0].overlay, "show_overlays", icon="OVERLAY")
-                    col.prop(context.area.spaces[0].overlay, "show_wireframes", icon="SHADING_WIRE")
-                    col.prop(context.area.spaces[0].overlay, "show_face_orientation", icon="FACESEL")
-                    col.prop(context.scene, "display_collisions", icon="SHADING_BBOX")
-                    col.prop(context.scene, "display_lighting", icon="LIGHT")
-                    col.separator()
-                    col.label(text="Import/Export")
-                    col.operator("import_scene.fbx", text="Import FBX", icon="IMPORT")
-                    col.operator("export_scene.fbx", text="Export FBX", icon="EXPORT")
-                    col.operator("object.batch_export_selections_as_sm", text="Batch Export SM_", icon="EXPORT")
-                    col.separator()
-                    col.label(text="To Unreal")
-                    col.operator("object.btus_setup", text="Setup for export", icon="SHADERFX")
-                    col.operator("object.btus_export", text="Set Export", icon="FAKE_USER_ON")
-                    col.operator("object.btus_dontexport", text="Set Dont Export", icon="FAKE_USER_OFF")
-                    col.operator("object.btus_updatepath", text="Update Path", icon="FILEBROWSER")
-            else:
-                if bpy.context.mode == "OBJECT":
-                    row = layout.row()
-                    col = row.column()
-                    col.label(text="Display Overlays")
-                    col.prop(context.area.spaces[0].overlay, "show_overlays", icon="OVERLAY")
-                    col.prop(context.area.spaces[0].overlay, "show_wireframes", icon="SHADING_WIRE")
-                    col.prop(context.area.spaces[0].overlay, "show_face_orientation", icon="FACESEL")
-                    col.prop(context.scene, "display_collisions", icon="SHADING_BBOX")
-                    col.prop(context.scene, "display_lighting", icon="LIGHT")
-                    col.separator()
-                    col.label(text="Import/Export")
-                    col.operator("import_scene.fbx", text="Import FBX", icon="IMPORT")
-                    col.operator("export_scene.fbx", text="Export FBX", icon="EXPORT")
-                    col = row.column()
-                    col.label(text="Lightmapping")
-                    col.operator("lightmap.unpack_collections", icon="ACTION")
-                    col.operator("lightmap.bake_batch", icon="LIGHT_DATA")
-                    col.operator("lightmap.clear_lightmapping_stuff", icon="REMOVE")
+        config = _configuration()
+        menu = config["roots"][_root_key(context)]
+        _draw_menu(self.layout, menu, context, Preferences.get_mode() == "PIE_MENUS")
 
 
-# -----------------------------
-# EDIT MODE SUB-MENUS
-# -----------------------------
-class UVSubMenu(bpy.types.Menu):
-    bl_label = "UV"
-    bl_idname = "OBJECT_MT_mzage_uv_menu"
+def rebuild_dynamic_menus():
+    global _dynamic_classes, _menu_class_ids
+    for cls in reversed(_dynamic_classes):
+        try:
+            bpy.utils.unregister_class(cls)
+        except (RuntimeError, ValueError):
+            pass
+    _dynamic_classes = []
+    _menu_class_ids = {}
+    config = _configuration()
 
-    def draw(self, context):
-        layout = self.layout.menu_pie()
-        layout.operator("mesh.mark_seam", text="Clear Seam", icon="REMOVE").clear = True
-        layout.operator("mesh.mark_seam", text="Mark Seam", icon="ADD")
-        layout.operator("uv.reset", text="Reset UVs", icon="X")
-        layout.operator("uv.unwrap", text="Conformal", icon="MOD_SHRINKWRAP")
-        layout.operator("uv.project_from_view", text="View Project", icon="PROP_PROJECTED").scale_to_bounds = False
-        layout.separator()
+    def make_draw(configured_id):
+        def draw(self, context):
+            current, _ = model.find_menu(_configuration(), configured_id)
+            if current:
+                _draw_menu(self.layout, current, context, Preferences.get_mode() == "PIE_MENUS")
+        return draw
 
-
-class MeshSubMenu(bpy.types.Menu):
-    bl_label = "Mesh"
-    bl_idname = "OBJECT_MT_mzage_mesh_menu"
-
-    def draw(self, context):
-        layout = self.layout.menu_pie()
-        layout.operator("mesh.mark_sharp", text="Clear Sharp", icon="REMOVE").clear = True
-        layout.operator("mesh.mark_sharp", text="Mark Sharp", icon="ADD")
-        layout.operator("mesh.set_edge_flow", text="Set Flow", icon="SPHERECURVE")
-        layout.operator("object.add_mat_sel_faces", icon="MATERIAL")
-        if context.tool_settings.mesh_select_mode[1]:
-            layout.operator("mesh.remove_checker", text="Remove Checker", icon="X")
-
-
-class VertexColorSubMenu(bpy.types.Menu):
-    bl_label = "Vertex Color"
-    bl_idname = "OBJECT_MT_mzage_vertex_color_menu"
-
-    def draw(self, context):
-        layout = self.layout.menu_pie()
-        layout.operator("mesh.copy_vertex_color", icon="COPYDOWN")
-        layout.operator("mesh.paste_vertex_color", icon="PASTEDOWN")
-        layout.operator("mesh.vertex_color_hsv_paint", icon="BRUSH_DATA")
-        layout.operator("mesh.select_same_vertex_color", icon="COLOR")
+    for index, (menu, _parents) in enumerate(model.walk_menus(config)):
+        class_id = f"PVM_MT_config_{index}_{menu['id'].replace('-', '_')[:24]}"
+        _menu_class_ids[menu["id"]] = class_id
+        cls = type(class_id, (bpy.types.Menu,), {
+            "bl_idname": class_id,
+            "bl_label": menu["label"],
+            "draw": make_draw(menu["id"]),
+        })
+        bpy.utils.register_class(cls)
+        _dynamic_classes.append(cls)
 
 
-class NormalsSubMenu(bpy.types.Menu):
-    bl_label = "Normals"
-    bl_idname = "OBJECT_MT_mzage_normals_menu"
-
-    def draw(self, context):
-        layout = self.layout.menu_pie()
-        layout.operator("mesh.flip_normals", text="Flip", icon="ORIENTATION_NORMAL")
-        layout.operator("mesh.normals_make_consistent", text="Recalculate", icon="NORMALS_VERTEX_FACE")
-        layout.operator("transform.rotate_normal", text="Rotate", icon="NORMALS_VERTEX")
-        layout.operator("mesh.normals_tools", text="Reset Normal", icon="SHADERFX").mode = "RESET"
+def new_id(prefix):
+    return f"{prefix}-{uuid.uuid4().hex[:12]}"
 
 
-class SelectionSubMenu(bpy.types.Menu):
-    bl_label = "Selection"
-    bl_idname = "OBJECT_MT_mzage_selection_menu"
-
-    def draw(self, context):
-        layout = self.layout.menu_pie()
-        layout.operator("mesh.loop_multi_select", text="Rings", icon="MESH_CIRCLE").ring = True
-        layout.operator("mesh.loop_multi_select", text="Loops", icon="STROKE").ring = False
-        layout.operator("mesh.region_to_loop", text="Boundary", icon="MOD_LATTICE")
-        layout.operator("mesh.select_nth", text="Checker", icon="TEXTURE")
-        layout.operator("mesh.loop_to_region", text="Inside", icon="OUTLINER_OB_LATTICE")
-        ts = bpy.context.tool_settings.mesh_select_mode
-        if ts[2] and not ts[0] and not ts[1]:
-            layout.operator("mesh.select_similar", text="Coplanar", icon="FACESEL").type = "FACE_COPLANAR"
-        layout.operator("mesh.select_overlapping_vertices", text="Overlapping Vertices", icon="VERTEXSEL")
-
-
-class WeightSubMenu(bpy.types.Menu):
-    bl_label = "Weight"
-    bl_idname = "OBJECT_MT_mzage_weight_menu"
-
-    def draw(self, context):
-        layout = self.layout.menu_pie()
-        layout.separator()
-        layout.separator()
-        layout.operator(MZageHandyMenuSelectWeight.bl_idname, text="Select Medium", icon="RESTRICT_SELECT_ON").strength = 'MEDIUM'
-        layout.operator(MZageHandyMenuSetWeight.bl_idname, text="Set Medium", icon="RESTRICT_SELECT_OFF").strength = 'MEDIUM'
-        layout.operator(MZageHandyMenuSetWeight.bl_idname, text="Set Weak", icon="RESTRICT_SELECT_OFF").strength = 'WEAK'
-        layout.operator(MZageHandyMenuSetWeight.bl_idname, text="Set Strong", icon="RESTRICT_SELECT_OFF").strength = 'STRONG'
-        layout.operator(MZageHandyMenuSelectWeight.bl_idname, text="Select Weak", icon="RESTRICT_SELECT_ON").strength = 'WEAK'
-        layout.operator(MZageHandyMenuSelectWeight.bl_idname, text="Select Strong", icon="RESTRICT_SELECT_ON").strength = 'STRONG'
-
-
-class LightmappingSubMenu(bpy.types.Menu):
-    bl_label = "Lightmapping"
-    bl_idname = "OBJECT_MT_mzage_lightmapping_menu"
-
-    def draw(self, context):
-        layout = self.layout.menu_pie()
-        ao = context.active_object
-        if ao and ao.mode == "EDIT":
-            layout.operator("lightmap.set_scale", icon="FIXED_SIZE")
-            layout.operator("lightmap.scaled_uv_packing", icon="UV")
-        else:
-            layout.operator("lightmap.unpack_collections", icon="ACTION")
-            layout.operator("lightmap.clear_lightmapping_stuff", icon="REMOVE")
-            layout.operator("lightmap.bake_batch", icon="LIGHT_DATA")
-
-
-class UtilsSubMenu(bpy.types.Menu):
-    bl_label = "Utils"
-    bl_idname = "OBJECT_MT_mzage_utils_menu"
-
-    def draw(self, context):
-        layout = self.layout.menu_pie()
-        layout.operator("mesh.set_origin_to_selection", text="Origin to Selected", icon="OBJECT_ORIGIN")
-        layout.operator("mesh.set_origin_to_selection_and_rotate", text="Fix Rotation", icon="OBJECT_ORIGIN")
-        layout.operator("mesh.get_edge_length", icon="DRIVER_DISTANCE")
-        layout.operator("mesh.get_edges_angle", icon="DRIVER_ROTATIONAL_DIFFERENCE")
-        layout.operator("collision.add_box_collision_to_selected", icon="SHADING_BBOX")
-        # layout.operator("mesh.snap_vertices_to_surface", icon="MOD_SHRINKWRAP")
-
-# -----------------------------
-# OBJECT MODE SUB-MENUS
-# -----------------------------
-
-
-class ObjectSubMenu(bpy.types.Menu):
-    bl_label = "Object"
-    bl_idname = "OBJECT_MT_mzage_object_menu"
-
-    def draw(self, context):
-        layout = self.layout.menu_pie()
-        ao = context.active_object
-        if ao.type == "MESH":
-            layout.prop(ao, "display_type", text="", icon="NODE_MATERIAL")
-            layout.prop(ao.data, "use_auto_smooth", icon="MOD_SMOOTH")
-        layout.operator("object.create_empty_parent", icon="EMPTY_DATA")
-        layout.operator("object.create_empty_parent_foreach", icon="EMPTY_DATA")
-        layout.operator("object.create_empty_parent_active", icon="EMPTY_DATA")
-        if panel_exists("DATA_PT_PsychoHistory_KM"):
-            layout.operator("wm.call_panel", text="Object History", icon="LOOP_BACK").name = "DATA_PT_PsychoHistory_KM"
-
-
-class ObjectModeUtilsSubMenu(bpy.types.Menu):
-    bl_label = "Utils"
-    bl_idname = "OBJECT_MT_mzage_copy_from_active_menu"
-
-    def draw(self, context):
-        layout = self.layout.menu_pie()
-        layout.operator("object.make_links_data", text="Copy Modifiers From Active", icon="MODIFIER").type = "MODIFIERS"
-        layout.operator("object.make_links_data", text="Copy Materials From Active", icon="MATERIAL").type = "MATERIAL"
-        layout.operator("object.selected_origins_to_active", text="Set Origins To Active", icon="TRANSFORM_ORIGINS")
-
-
-class ExportSubMenu(bpy.types.Menu):
-    bl_label = "Import ➕ Export"
-    bl_idname = "OBJECT_MT_mzage_export_menu"
-
-    def draw(self, context):
-        layout = self.layout.menu_pie()
-        layout.operator("import_scene.fbx", icon="IMPORT")
-        layout.operator("export_scene.fbx", icon="EXPORT")
-        layout.operator("object.batch_export_selections_as_sm", text="Batch Export SM_", icon="EXPORT")
-
-
-class DisplayOverlaySubMenu(bpy.types.Menu):
-    bl_label = "Display Overlays"
-    bl_idname = "OBJECT_MT_mzage_overlay_menu"
-
-    def draw(self, context):
-        layout = self.layout.menu_pie()
-        layout.prop(context.scene, "display_collisions", icon="SHADING_BBOX")
-        layout.prop(context.scene, "display_lighting", icon="LIGHT")
-        layout.prop(context.area.spaces[0].overlay, "show_overlays", icon="OVERLAY")
-        layout.prop(context.area.spaces[0].overlay, "show_wireframes", icon="SHADING_WIRE")
-        layout.prop(context.area.spaces[0].overlay, "show_face_orientation", icon="FACESEL")
-
-
-class ToUnrealSubMenu(bpy.types.Menu):
-    bl_label = "To Unreal"
-    bl_idname = "OBJECT_MT_mzage_to_unreal_menu"
-
-    def draw(self, context):
-        layout = self.layout.menu_pie()
-        layout.operator("object.btus_setup", text="Setup for export", icon="SHADERFX")
-        layout.operator("object.btus_export", text="Set Export", icon="FAKE_USER_ON")
-        layout.operator("object.btus_dontexport", text="Set Dont Export", icon="FAKE_USER_OFF")
-        layout.operator("object.btus_updatepath", text="Update Path", icon="FILEBROWSER")
-
-
-class AssetBrowserSubMenu(bpy.types.Menu):
-    bl_label = "Asset Browser"
-    bl_idname = "OBJECT_MT_mzage_asset_browser_menu"
-
-    def draw(self, context):
-        layout = self.layout.menu_pie()
-        layout.operator("assetbrowser.make_collection_asset_from_selection", icon="ASSET_MANAGER")
-
-
-classes = [
+classes = (
     MZageHandyMenuSelectWeight,
     MZageHandyMenuSetWeight,
     MZageHandyMenu,
-    UVSubMenu,
-    MeshSubMenu,
-    VertexColorSubMenu,
-    NormalsSubMenu,
-    SelectionSubMenu,
-    WeightSubMenu,
-    LightmappingSubMenu,
-    UtilsSubMenu,
-    ObjectSubMenu,
-    ObjectModeUtilsSubMenu,
-    ExportSubMenu,
-    DisplayOverlaySubMenu,
-    ToUnrealSubMenu,
-    AssetBrowserSubMenu
-]
+)
+
+
+def _unregister_legacy_menu_operators():
+    for name in ("PVM_OT_UnavailableMenuItem", "PVM_OT_RunCustomOperator"):
+        cls = getattr(bpy.types, name, None)
+        if cls:
+            try:
+                bpy.utils.unregister_class(cls)
+            except (RuntimeError, ValueError):
+                pass
 
 
 def register():
-    for cls in classes:
-        bpy.utils.register_class(cls)
+    registered = []
+    try:
+        _unregister_legacy_menu_operators()
+        for cls in classes:
+            bpy.utils.register_class(cls)
+            registered.append(cls)
+        rebuild_dynamic_menus()
+    except Exception:
+        for dynamic_cls in reversed(_dynamic_classes):
+            try:
+                bpy.utils.unregister_class(dynamic_cls)
+            except (RuntimeError, ValueError):
+                pass
+        _dynamic_classes.clear()
+        _menu_class_ids.clear()
+        for cls in reversed(registered):
+            try:
+                bpy.utils.unregister_class(cls)
+            except (RuntimeError, ValueError):
+                pass
+        raise
 
 
 def unregister():
-    for cls in classes:
+    global _dynamic_classes
+    for cls in reversed(_dynamic_classes):
+        try:
+            bpy.utils.unregister_class(cls)
+        except (RuntimeError, ValueError):
+            pass
+    _dynamic_classes = []
+    _menu_class_ids.clear()
+    for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
+    _unregister_legacy_menu_operators()

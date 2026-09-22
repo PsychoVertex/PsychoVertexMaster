@@ -1,4 +1,5 @@
 import time
+import traceback
 from functools import partial
 import inspect
 from dataclasses import dataclass
@@ -6,14 +7,17 @@ from typing import Callable, Optional, List
 import bpy
 from bpy.types import Operator, Context
 
-INTERVAL = 0.1
+# Short enough for item-by-item cooperative work without adding noticeable
+# latency, while still leaving Blender time to redraw and process cancellation.
+INTERVAL = 0.02
 
 
-def ascii_progress(step, total, width=60):
-    frac = step / total
+def ascii_progress(step, total, width=24):
+    total = max(1, total)
+    frac = max(0.0, min(1.0, step / total))
     filled = int(width * frac)
-    bars = "█" * filled + "░" * (width - filled)
-    return f"[{bars}] {frac:.0%}"
+    bars = "#" * filled + "-" * (width - filled)
+    return f"[{bars}] {frac:>4.0%}"
 
 
 @dataclass
@@ -22,6 +26,7 @@ class PipelineTask:
     poll: Optional[Callable] = None
     deferred: bool = True
     timelog: bool = False
+    label: Optional[str] = None
 
 
 class PipelineOperator(Operator):
@@ -36,6 +41,11 @@ class PipelineOperator(Operator):
     _deferred_done: bool = False
     _response: dict
     _start_time = 0
+    _exception = None
+    _announced: bool = False
+    _detail_text: str = ""
+    _detail_current: int = 0
+    _detail_total: int = 0
 
     cancellable = True
 
@@ -44,6 +54,40 @@ class PipelineOperator(Operator):
     # -----------------------------
     def get_tasks(self) -> List[PipelineTask]:
         return []
+
+    def set_pipeline_detail(self, text="", current=0, total=0):
+        """Set item-level progress from a pipeline start or poll callback."""
+        self._detail_text = str(text) if text else ""
+        self._detail_current = max(0, int(current or 0))
+        self._detail_total = max(0, int(total or 0))
+        if self._detail_total:
+            bpy.context.window_manager.progress_update(
+                self._step + min(1.0, self._detail_current / self._detail_total)
+            )
+
+    def _task_name(self, task):
+        return task.label or task.start.__name__.replace("_", " ").title()
+
+    def _status_text(self, task):
+        task_name = self._task_name(task)
+        item_fraction = (
+            min(1.0, self._detail_current / self._detail_total)
+            if self._detail_total else 0.0
+        )
+        status = (
+            f"{ascii_progress(self._step + item_fraction, len(self._tasks))}  "
+            f"Step {self._step + 1}/{len(self._tasks)}: {task_name}"
+        )
+        if self._detail_text:
+            status += f"  |  {self._detail_text}"
+        if self._detail_total:
+            status += f" ({self._detail_current}/{self._detail_total})"
+        return status + f"  |  {time.time() - self._start_time:.1f}s  |  Esc: Cancel"
+
+    def _draw_status(self, context, task):
+        if context.area and hasattr(context.area, "header_text_set"):
+            context.area.header_text_set(self._status_text(task))
+            context.area.tag_redraw()
 
     # -----------------------------
     # Modal loop (scheduler ONLY)
@@ -61,8 +105,19 @@ class PipelineOperator(Operator):
             return {'FINISHED'}
 
         task = self._tasks[self._step]
-        name = task.start.__name__.replace("_", " ").title()
-        context.area.header_text_set(f"{ascii_progress(self._step, len(self._tasks))} ({name})")
+        name = self._task_name(task)
+
+        # Announce on one timer event and start work on the next. This gives
+        # Blender a complete redraw opportunity before a synchronous callback.
+        if not self._announced:
+            self._announced = True
+            self._start_time = time.time()
+            self.set_pipeline_detail("Starting...")
+            self._draw_status(context, task)
+            print(f"[PIPELINE] Step {self._step + 1}/{len(self._tasks)}: {name}")
+            return {'RUNNING_MODAL'}
+
+        self._draw_status(context, task)
 
         # ----------------------------------
         # Start task (once)
@@ -70,26 +125,40 @@ class PipelineOperator(Operator):
         if not self._running:
             self._running = True
             self._response = None
-            self._start_time = time.time()
+            self.set_pipeline_detail("Working...")
             task_start_with_params = partial(task.start, context) if 'context' in inspect.signature(task.start).parameters else task.start
 
             if task.deferred:
                 self._deferred_done = False
 
                 def wrapper():
-                    self._response = task_start_with_params()
-                    self._deferred_done = True
+                    try:
+                        self._response = task_start_with_params()
+                    except Exception as ex:
+                        self._exception = ex
+                        traceback.print_exc()
+                    finally:
+                        self._deferred_done = True
                     return None  # one-shot
 
                 bpy.app.timers.register(wrapper, first_interval=0)
             else:
-                self._response = task_start_with_params()
+                try:
+                    self._response = task_start_with_params()
+                except Exception as ex:
+                    self._exception = ex
+                    traceback.print_exc()
 
         # ----------------------------------
         # Wait for deferred execution
         # ----------------------------------
         if task.deferred and not self._deferred_done:
             return {'RUNNING_MODAL'}
+
+        if self._exception is not None:
+            self.report({'ERROR'}, f"{name} failed: {self._exception}")
+            self.finish(context, cancelled=True)
+            return {'CANCELLED'}
 
         # ----------------------------------
         # Cancel if cancelable
@@ -103,9 +172,19 @@ class PipelineOperator(Operator):
         # ----------------------------------
         if task.poll:
             try:
-                if task.poll():
+                still_running = task.poll()
+                if self.cancellable and self._response == {'CANCELLED'}:
+                    self.finish(context, cancelled=True)
+                    return {'CANCELLED'}
+                if still_running:
                     return {'RUNNING_MODAL'}
             except ReferenceError:
+                self.report({'ERROR'}, f"{name} stopped because Blender data was removed")
+                self.finish(context, cancelled=True)
+                return {'CANCELLED'}
+            except Exception as ex:
+                traceback.print_exc()
+                self.report({'ERROR'}, f"{name} failed: {ex}")
                 self.finish(context, cancelled=True)
                 return {'CANCELLED'}
 
@@ -114,9 +193,10 @@ class PipelineOperator(Operator):
         # ----------------------------------
         self._running = False
         self._step += 1
-        context.window_manager.progress_update(self._step + 1)
+        self._announced = False
+        context.window_manager.progress_update(self._step)
         milliseconds = (time.time() - self._start_time) * 1000
-        print(f"[PIPELINE] Task \"{name}\" {' ' * (30 - len(name))} took {milliseconds:,.0f} ms")
+        print(f"[PIPELINE] Completed {self._step}/{len(self._tasks)}: {name} ({milliseconds:,.0f} ms)")
         if task.timelog:
             self.report({"INFO"}, f"Task \"{name}\" took {milliseconds:,.0f} ms")
 
@@ -135,10 +215,13 @@ class PipelineOperator(Operator):
 
         self._step = 0
         self._running = False
+        self._exception = None
+        self._announced = False
+        self.set_pipeline_detail()
 
         wm = context.window_manager
-        wm.progress_begin(0, len(self._tasks) + 1)
-        wm.progress_update(1)
+        wm.progress_begin(0, len(self._tasks))
+        wm.progress_update(0)
 
         self._timer = wm.event_timer_add(INTERVAL, window=context.window)
         wm.modal_handler_add(self)
@@ -156,9 +239,25 @@ class PipelineOperator(Operator):
             self._timer = None
 
         wm.progress_end()
-        context.area.header_text_set(None)
+        if context.area and hasattr(context.area, "header_text_set"):
+            context.area.header_text_set(None)
+
+        try:
+            self.on_pipeline_finished(context, cancelled)
+        except Exception as ex:
+            traceback.print_exc()
+            self.report({'ERROR'}, f"Pipeline cleanup failed: {ex}")
+
+        if cancelled:
+            self.report({'WARNING'}, "Operation cancelled")
+        else:
+            self.report({'INFO'}, "Operation completed")
 
         print("[PIPELINE END]\n")
+
+    def on_pipeline_finished(self, context: Context, cancelled: bool):
+        """Optional cleanup hook for subclasses."""
+        pass
 
 
 # class PipelineOperator(Operator):

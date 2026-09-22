@@ -3,6 +3,12 @@ import bmesh
 from bpy.types import Operator
 
 
+def edit_mesh_objects(context):
+    """Return each unique mesh participating in the current Edit Mode session."""
+    objects = getattr(context, "objects_in_mode_unique_data", ())
+    return [obj for obj in objects if obj.type == 'MESH']
+
+
 class CopyColorOperator(Operator):
     bl_idname = "mesh.copy_vertex_color"
     bl_label = "Copy"
@@ -64,21 +70,6 @@ class PasteColorOperator(Operator):
         return obj and obj.type == 'MESH' and obj.mode == 'EDIT'
 
     def execute(self, context):
-        obj = context.active_object
-        mesh = obj.data
-
-        bm = bmesh.from_edit_mesh(mesh)
-        color_layer = bm.loops.layers.color.active
-
-        if not color_layer:
-            self.report({'WARNING'}, "No active vertex color layer found")
-            return {'CANCELLED'}
-
-        selected_faces = [f for f in bm.faces if f.select]
-        if not selected_faces:
-            self.report({'WARNING'}, "No faces selected")
-            return {'CANCELLED'}
-
         # Get color from clipboard
         hex_color = context.window_manager.clipboard.strip()
         if not hex_color.startswith("#") or len(hex_color) != 7:
@@ -93,13 +84,31 @@ class PasteColorOperator(Operator):
         g = int(hex_color[3:5], 16) / 255.0
         b = int(hex_color[5:7], 16) / 255.0
 
-        # Apply color to all selected faces
-        for face in selected_faces:
-            for loop in face.loops:
-                loop[color_layer] = (r, g, b, 1.0)  # RGBA, alpha = 1
+        face_count = 0
+        mesh_count = 0
+        for obj in edit_mesh_objects(context):
+            mesh = obj.data
+            bm = bmesh.from_edit_mesh(mesh)
+            color_layer = bm.loops.layers.color.active
+            if not color_layer:
+                continue
 
-        bmesh.update_edit_mesh(mesh)
-        self.report({'INFO'}, f"Pasted color {hex_color} to {len(selected_faces)} faces")
+            selected_faces = [face for face in bm.faces if face.select]
+            if not selected_faces:
+                continue
+            for face in selected_faces:
+                for loop in face.loops:
+                    loop[color_layer] = (r, g, b, 1.0)
+
+            bmesh.update_edit_mesh(mesh, loop_triangles=False)
+            face_count += len(selected_faces)
+            mesh_count += 1
+
+        if not face_count:
+            self.report({'WARNING'}, "No selected faces with an active vertex color layer")
+            return {'CANCELLED'}
+
+        self.report({'INFO'}, f"Pasted color {hex_color} to {face_count} faces across {mesh_count} objects")
         return {'FINISHED'}
 
 
