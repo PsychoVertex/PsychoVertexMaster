@@ -36,6 +36,7 @@ Press a key. Pick an action. Stay in the flow.
 - [Blender origin and parenting tools](#blender-origin-and-parenting-tools)
 - [Blender Asset Browser tools](#blender-asset-browser-tools)
 - [Blender FBX import and batch export](#blender-fbx-import-and-batch-export)
+- [Custom lightmapping workflow](#custom-lightmapping-workflow)
 - [Child Control](#child-control)
 - [Preferences](#preferences)
 - [Installation](#installation)
@@ -78,6 +79,8 @@ PsychoVertexMaster does not replace Blender's tools. It makes the best everyday 
 | **Game-asset tools** | Fitted box collisions, collision display, Asset Browser creation, and Unreal helpers |
 | **Blender export tools** | Quick FBX access and separate `SM_` batch FBX export |
 | **Scene organization** | Empty-parent workflows, origin alignment, child controls, and display toggles |
+| **Custom lightmapping** | Batch preparation, shared UV packing, Cycles baking, optional denoising, filler replacement, and EXR output |
+| **Configurable menus** | Independent Edit Mode, Object Mode, and no-selection layouts with reusable custom entries |
 
 Whether you are searching for a **Blender modeling add-on**, a faster **Blender pie menu**, better **UV workflow tools**, or practical **game asset creation tools**, PsychoVertexMaster keeps the most useful actions together.
 
@@ -313,11 +316,16 @@ The tool temporarily switches viewport shading so the color is visible, supports
 
 ## Blender collision generator
 
-### Fitted box collision
+Create Unreal-compatible collision helpers from a mesh selection in Edit Mode or from selected meshes in Object Mode:
 
-Select at least three vertices in Edit Mode and run **Add Box Collision**.
+| Tool | Output | Best for |
+| --- | --- | --- |
+| **Add Box Collision** | `UBX_` | Box-like forms using axis-aligned or PCA-oriented fitting. |
+| **Add Sphere Collision** | `USP_` | Rounded objects using a fitted sphere. |
+| **Add Capsule Collision** | `UCP_` | Elongated rounded forms using a fitted capsule. |
+| **Add Convex Collision** | `UCX_` | Irregular forms using a convex hull. |
 
-The tool:
+For example, select at least three vertices in Edit Mode and run **Add Box Collision**. The tool:
 
 1. analyzes the selected points;
 2. compares an axis-aligned box with a PCA-oriented box;
@@ -401,6 +409,52 @@ Children inside collections that disable selection are omitted, keeping protecte
 
 ---
 
+## Custom lightmapping workflow
+
+PsychoVertexMaster includes a batch-oriented lightmapping pipeline for preparing Blender assets, sharing a packed `LightMap` UV space, baking Cycles lighting, denoising the result, assigning final EXR lightmaps, and preparing generated assets for Unreal Engine workflows.
+
+### Feature overview
+
+- Treat each direct child of a top-level `SOURCE` collection as one independent bake batch.
+- Realize collection instances while preserving object hierarchies, lights, collision helpers, material-slot order, and shadow-visibility behavior.
+- Pack eligible meshes together with per-face `lightmap_scale` control and optional pixel-perfect UV alignment.
+- Bake multiple receivers into one persistent full-resolution noisy EXR per batch.
+- Denoise before or after premultiplied downsampling, with controllable final-pixel margins.
+- Use Blender's integrated denoiser, Open Image Denoise, the supported OptiX executable, or no denoising.
+- Replace repeated filler instances from prepared batches without adding them to later bakes.
+- Preview baked lighting and clean either one generated batch or the complete generated workspace.
+
+### Requirements
+
+- Blender 4.2 or newer for the complete workflow. Passthrough materials use the Ray Portal BSDF introduced in Blender 4.2.
+- [UVPackmaster 3](https://uvpackmaster.com/) for the custom UV packing operations.
+- A saved `.blend` file and permission to write its `Lightmaps` directory.
+- Mesh receivers with a UV layer named `LightMap`.
+- Materials explicitly marked for light baking, passthrough, or full transparency as needed.
+- For external denoising, either use the preference download buttons or choose compatible executables manually.
+
+### Basic workflow
+
+1. Create `SOURCE`; make each direct child collection a separate intended bake batch.
+2. Add a `LightMap` UV layer to meshes that should receive baked lighting and configure their material light-baking roles.
+3. Optionally set per-face lightmap scale in Edit Mode; `1` is normal density and `0` removes useful lightmap area.
+4. Run **Unpack Collections** to generate prepared `EXPORT_STUFF/BatchN` collections and pack their UVs.
+5. Activate a generated batch in the Outliner and run **Bake Batch**.
+6. Keep that batch active and run **Denoise Batch** to write and assign its final lightmap.
+7. Optionally replace `FILLERS`, toggle the lighting preview, then export or clean generated data.
+
+See the **[complete lightmapping guide](LIGHTMAPPING_WORKFLOW.md)** for collection setup, material roles, packing controls, baking, denoising, fillers, troubleshooting, and cleanup behavior.
+
+### Where to find the controls
+
+- Press <kbd>D</kbd> or <kbd>W</kbd> in the 3D View and open **Lightmapping**.
+- Edit Mode provides **Set Lightmap Scale** and **Scaled UV Packing**.
+- Object Mode—or no active object—provides unpack, repack, bake, denoise, filler, and cleanup operations.
+- Open **Material Properties → Light Baking** to choose **Light Baked**, **Passthrough**, or **Fully Transparent**. Choose only one role per material.
+- Batch-sensitive operations use the active collection in the Outliner, not merely the selected object.
+
+---
+
 ## Preferences
 
 Open **Edit → Preferences → Add-ons → PsychoVertexMaster**.
@@ -410,18 +464,46 @@ Open **Edit → Preferences → Add-ons → PsychoVertexMaster**.
 | **Pie Menus** | Fast radial navigation designed for muscle memory. This is the default. |
 | **Normal Menus** | A conventional multi-column layout for users who prefer visible lists. |
 
+### Menu configuration
+
+![PsychoVertexMaster menu configuration preferences](docs/images/preferences-menu-configuration.png)
+
+Customize independent Handy Menu layouts for **Edit Mode**, **Object Mode**, and **No Active Object**. Each context can contain up to eight enabled slots while retaining additional disabled entries for later use.
+
+- Reorder, enable or disable, and remove entries directly from each row.
+- Rename items, enter Blender icon identifiers, or use the visual icon picker.
+- Open and edit nested submenus through the breadcrumb navigation.
+- Add built-in PsychoVertexMaster actions, custom Blender operators, safe property controls, separators, or submenus.
+- Import, export, or reset the complete menu configuration with the header controls.
+
+Layouts persist in Blender's add-on preferences. Import and export use JSON files for backup or transfer. The eight-slot limit applies only to enabled entries in each individual menu; additional entries may remain configured but disabled.
+
 ### External lightmap denoisers
 
 The preferences include compact executable paths for **OIDN** and **OptiX**. You can select an existing executable, or use the two download buttons beneath the paths:
 
-- **Download Open Image Denoiser** installs OIDN 2.5.1, including its required DLLs, inside the add-on's `denoisers` folder.
-- **Download OptiX Denoiser** installs Declan Russell's compatible `Denoiser.exe` in the same folder.
+![PsychoVertexMaster denoiser preferences](docs/images/preferences-denoisers.png)
+
+- **Download Open Image Denoiser** installs [Intel Open Image Denoise](https://github.com/RenderKit/oidn) 2.5.1, including its required DLLs, inside the add-on's `denoisers` folder.
+- **Download OptiX Denoiser** installs [Declan Russell's](https://github.com/DeclanRussell/NvidiaAIDenoiser) compatible `Denoiser.exe` in the same folder.
 
 Downloaded executables become the defaults automatically. A manually selected path always takes precedence. Internet access and write permission to the installed add-on directory are required for downloading.
+
+External denoising is optional, and installing **either** backend is sufficient—you do not need both. The download buttons install 64-bit Windows builds. OptiX also requires a compatible NVIDIA GPU and driver; release 3.0 requires NVIDIA driver 565 or newer. On other operating systems, choose a compatible OIDN executable manually where supported; the supplied OptiX adapter expects the Windows `Denoiser.exe` application.
+
+These denoisers are currently used only by PsychoVertexMaster's custom lightmapping workflow; they do not affect Blender renders or other add-on tools. More denoising uses may be added later. **OIDN is preferred when external denoising is enabled** because it provides the dedicated `RTLightmap` filter used by this workflow.
+
+Both downloads come directly from third-party GitHub releases and are not developed or bundled by PsychoVertexMaster. [Intel Open Image Denoise](https://github.com/RenderKit/oidn) is distributed under Apache 2.0; [Declan Russell's NVIDIA AI Denoiser](https://github.com/DeclanRussell/NvidiaAIDenoiser) is distributed under the MIT License. Their upstream requirements and licenses apply.
 
 ---
 
 ## Installation
+
+### Blender compatibility
+
+- General add-on metadata declares Blender 3.0 or newer.
+- The complete custom lightmapping workflow requires Blender 4.2 or newer because passthrough materials use the Cycles Ray Portal BSDF.
+- Features that do not use Ray Portal may continue to work on earlier versions, but should be tested against the exact Blender release.
 
 1. Click **Code → Download ZIP** on this GitHub repository.
 2. Ensure the ZIP contains the PsychoVertexMaster folder with its root `__init__.py`.

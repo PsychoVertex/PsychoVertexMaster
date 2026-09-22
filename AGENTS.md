@@ -16,6 +16,7 @@ Keep changes small and compatible with Blender's Python API. Do not build or lau
 - `UvTools/__init__.py`: general UV-layer utilities; related but separate from the lightmapping packer.
 - `HandyUtils/BlenderToUnreal.py`: configures Unreal/BFU lightmap export settings; do not confuse this with the custom baked-lightmap workflow.
 - `UNREAL_ENGINE_ASSETS_EXPORTER.md`: audited technical contract for Unreal Engine Assets Exporter/BFU 4.4.3, including its pipeline, RNA properties, enum values, generated files, Unreal importer, and PVM integration risks.
+- `LIGHTMAPPING_WORKFLOW.md`: user-facing, in-depth setup and operation guide for the custom lightmapping pipeline; keep it aligned with workflow or UI changes.
 - Root `__init__.py`: module registration order and add-on metadata.
 
 ## Unreal Export Integration
