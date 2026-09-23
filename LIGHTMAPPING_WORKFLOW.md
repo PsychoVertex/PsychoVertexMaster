@@ -190,13 +190,13 @@ If a custom preference path is blank, the add-on checks its local `denoisers` in
 
 An optional top-level `FILLERS` collection may contain collection instances used to place repeated prepared assets. Organize its direct children by source batch: `F_X` corresponds to `S_X` and its generated `BatchN (S_X)`.
 
-Run **Replace Fillers** before or after baking. The operator recursively matches each filler instance by its instanced collection name, but processes only assets represented by current batches in `EXPORT_STUFF`. It duplicates the matching prepared hierarchy into:
+Make the generated `BatchN (S_X)` active, then run **Replace Fillers** before or after baking. The operator recursively matches instances in that batch's paired `F_X` collection by instanced collection name. It duplicates the matching prepared hierarchy into:
 
 ```text
 EXPORT_STUFF/BATCH_FILLERS/FillersN
 ```
 
-The filler instance's unapplied placement transform is preserved for later Unreal layout. Replacements remain outside `BatchN`, so future bakes do not include them. Only the paired `F_X` collection is hidden after its `FillersN` replacement succeeds; the `FILLERS` root and unrelated filler collections remain visible. One source library collection may contain multiple objects. Unmatched filler instances are skipped, and a failed preflight changes nothing.
+The filler instance's unapplied placement transform is preserved for later Unreal layout. Replacements remain outside `BatchN`, so future bakes do not include them. Only the paired `F_X` collection is hidden after its `FillersN` replacement succeeds; the `FILLERS` root, unrelated filler collections, and existing `BATCH_FILLERS/FillersN` collections for other batches remain unchanged. One source library collection may contain multiple objects. Unmatched filler instances are skipped, and a failed preflight changes nothing.
 
 Run **Clear Filler Replacements** to remove `BATCH_FILLERS` and reveal the original `FILLERS` collection. Batches, UVs, materials, and baked lightmaps are preserved.
 

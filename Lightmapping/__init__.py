@@ -4,6 +4,8 @@ import re
 import time
 import shutil
 import math
+import base64
+import subprocess
 from tempfile import TemporaryDirectory
 import bpy
 import bmesh
@@ -54,6 +56,34 @@ PACK_DIALOG_SETTINGS = (
 )
 REPACK_DIALOG_SETTINGS = ("uvMargin", "textureSize", "pixelPerfect", "heuristicDuration")
 SCALED_PACK_DIALOG_SETTINGS = ("heuristic", "pixel_margin", "texture_size")
+
+
+def _send_windows_notification(title: str, message: str):
+    """Show a non-blocking Windows notification-area balloon."""
+    if os.name != "nt":
+        return
+    title = title.replace("'", "''")
+    message = message.replace("'", "''")
+    script = f"""
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    $notification = New-Object System.Windows.Forms.NotifyIcon
+    $notification.Icon = [System.Drawing.SystemIcons]::Information
+    $notification.Visible = $true
+    $notification.ShowBalloonTip(5000, '{title}', '{message}', [System.Windows.Forms.ToolTipIcon]::Info)
+    Start-Sleep -Seconds 6
+    $notification.Dispose()
+    """
+    encoded_script = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+    try:
+        subprocess.Popen(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-EncodedCommand", encoded_script],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        pass
 
 
 def _is_bake_mesh(obj: Object) -> bool:
@@ -432,15 +462,12 @@ class ReplaceFillers(Operator):
     bl_options = {'REGISTER', 'UNDO', 'UNDO_GROUPED'}
 
     def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self, width=500)
+        return context.window_manager.invoke_props_dialog(self, width=360)
 
     def draw(self, context):
         layout = self.layout
-        layout.label(text="Replace matching instances in each FILLERS/F_X collection?", icon='OUTLINER_COLLECTION')
-        layout.label(text="F_X is paired with the generated BatchN (S_X).")
-        layout.label(text="Matching uses the instanced library collection name.")
-        layout.label(text="Replacements are kept outside BatchN, so they are never included in baking.", icon='INFO')
-        layout.label(text="Existing FillersN collections will be replaced only after preflight succeeds.")
+        layout.label(text="Replace fillers for the active batch?", icon='OUTLINER_COLLECTION')
+        layout.label(text="Other filler replacements are unchanged.")
 
     def execute(self, context: Context):
         fillers = bpy.data.collections.get("FILLERS")
@@ -456,13 +483,14 @@ class ReplaceFillers(Operator):
             self.report({'ERROR'}, "FILLERS is not present in the active View Layer")
             return {'CANCELLED'}
 
-        batches = sorted(
-            (batch for batch in export.children if _batch_number(batch) is not None),
-            key=_batch_number,
-        )
-        if not batches:
-            self.report({'ERROR'}, "No generated BatchN collection; unpack collections first")
+        active_batch = context.view_layer.active_layer_collection.collection
+        if (
+            _batch_number(active_batch) is None
+            or export.children.get(active_batch.name) is not active_batch
+        ):
+            self.report({'ERROR'}, "Make the generated BatchN to replace active")
             return {'CANCELLED'}
+        batches = [active_batch]
 
         groups_by_batch_asset = {}
         for batch in batches:
@@ -512,12 +540,12 @@ class ReplaceFillers(Operator):
             else:
                 replacements.append((filler, batch, *match))
         if not replacements:
-            self.report({'ERROR'}, "No FILLERS instances match the batches currently in EXPORT_STUFF")
+            self.report({'ERROR'}, f"No FILLERS instances match {active_batch.name}")
             return {'CANCELLED'}
         if unmatched:
             print(
                 f"[LIGHTMAP] Replace Fillers skipped {len(unmatched)} instance(s) "
-                f"without a batch currently in EXPORT_STUFF"
+                f"without a match in {active_batch.name}"
             )
 
         staged = {}
@@ -588,8 +616,8 @@ class ReplaceFillers(Operator):
             if legacy is not None:
                 DeleteCollection(legacy.name)
 
-        skipped = f"; skipped {len(unmatched)} without an exported batch" if unmatched else ""
-        self.report({'INFO'}, f"Replaced {len(replacements)} filler instance(s) across {len(staged)} batch(es){skipped}")
+        skipped = f"; skipped {len(unmatched)} without a match" if unmatched else ""
+        self.report({'INFO'}, f"Replaced {len(replacements)} filler instance(s) for {active_batch.name}{skipped}")
         return {'FINISHED'}
 
 
@@ -604,9 +632,8 @@ class ClearFillerReplacements(Operator):
 
     def draw(self, context):
         layout = self.layout
-        layout.label(text="Delete generated FillersN replacement collections?", icon='TRASH')
-        layout.label(text="Batches, baked lightmaps, UVs, and materials will be preserved.", icon='INFO')
-        layout.label(text="The original FILLERS collection will be shown again.")
+        layout.label(text="Remove generated filler replacements?", icon='TRASH')
+        layout.label(text="Batches and lightmaps are kept.")
 
     def execute(self, context: Context):
         export = bpy.data.collections.get("EXPORT_STUFF")
@@ -660,11 +687,9 @@ class ClearLightmappingStuff(Operator):
         export = bpy.data.collections.get("EXPORT_STUFF")
         number = _batch_number(active)
         if export is not None and number is not None and export.children.get(active.name) is active:
-            layout.label(text=f"Delete {active.name} and Fillers{number}?", icon='ERROR')
-            layout.label(text="Other generated batches will be preserved.", icon='INFO')
+            layout.label(text=f"Delete {active.name} and its fillers?", icon='ERROR')
             return
-        layout.label(text="Delete generated lightmapping collections and temporary data?", icon='ERROR')
-        layout.label(text="This also runs recursive orphan purge, including linked orphan data.")
+        layout.label(text="Delete all generated lightmapping data?", icon='ERROR')
 
     def execute(self, context: Context):
         active = context.view_layer.active_layer_collection.collection
@@ -1610,6 +1635,8 @@ class BakeBatch(PipelineOperator):
         if backup is not None:
             backup.cleanup()
             self._previous_noisy_backup = None
+        if not cancelled:
+            _send_windows_notification("PsychoVertexMaster", "Lightmap bake finished")
 
 
 class DenoiseBatch(PipelineOperator):
@@ -1664,12 +1691,6 @@ class DenoiseBatch(PipelineOperator):
         margin_box.prop(self, "margin_mode")
         if self.margin_mode != 'NONE':
             margin_box.prop(self, "margin")
-        if self.margin_mode == 'INCLUDE':
-            margin_box.label(text="Dilate noisy pixels before denoising.", icon='INFO')
-        elif self.margin_mode == 'EXCLUDE':
-            margin_box.label(text="Denoise island pixels, then dilate the result.", icon='INFO')
-        else:
-            margin_box.label(text="Keep Blender's baked margins without rebuilding them.", icon='INFO')
         prefs = Preferences.get()
         if self.denoiser == 'LIGHTMAP_OIDN':
             path = Preferences.get_oidn_path(prefs)
@@ -1887,6 +1908,7 @@ class DenoiseBatch(PipelineOperator):
                     if node.image is not None and node.image != image:
                         replaced_images.add(node.image)
                     node.image = image
+                    node.interpolation = 'Linear'
                     assigned += 1
         if assigned == 0:
             bpy.data.images.remove(image)
@@ -1936,6 +1958,8 @@ class DenoiseBatch(PipelineOperator):
         if backup is not None:
             backup.cleanup()
             self._previous_final_backup = None
+        if not cancelled:
+            _send_windows_notification("PsychoVertexMaster", "Lightmap denoise finished")
 
 
 class RepackActiveBatch(PipelineOperator):
@@ -2132,10 +2156,6 @@ class _UnpackBase(PipelineOperator):
         heuristic_row.enabled = self.packLightmaps
         heuristic_row.prop(self, "heuristicDuration")
         layout.prop(self, "preparationErrorPolicy")
-        layout.label(text="Seconds of heuristic search used for each batch's final pack.", icon='TIME')
-        layout.label(text="Each direct child of SOURCE becomes one batch.", icon='INFO')
-        layout.label(text="Existing source-backed batches are kept and skipped.", icon='INFO')
-        layout.label(text="SOURCE will be hidden after generation.", icon='INFO')
 
     def validate(self, context: Context):
         source = bpy.data.collections.get('SOURCE')
@@ -2867,7 +2887,6 @@ class UnpackActiveCollection(_UnpackBase):
         heuristic_row.enabled = self.packLightmaps
         heuristic_row.prop(self, "heuristicDuration")
         layout.prop(self, "preparationErrorPolicy")
-        layout.label(text="Only this collection will be generated and hidden.", icon='INFO')
 
     @staticmethod
     def _active_source(context):
@@ -2975,6 +2994,7 @@ class UnpackActiveCollection(_UnpackBase):
         else:
             source_layer.exclude = True
         self.report({'INFO'}, f"Created {pending.name} and hid {self._requested_source.name}")
+        _send_windows_notification("PsychoVertexMaster", "Lightmap unpack finished")
 
 
 class ScaledUVPacking(Operator):
@@ -2999,7 +3019,6 @@ class ScaledUVPacking(Operator):
         layout.prop(self, "heuristic")
         layout.prop(self, "pixel_margin")
         layout.prop(self, "texture_size")
-        layout.label(text="All selected meshes must be in multi-object Edit Mode.", icon='INFO')
 
     def execute(self, context: Context):
         Preferences.save_dialog_settings(self, SCALED_PACK_DIALOG_SETTINGS)
