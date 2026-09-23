@@ -8,8 +8,29 @@ import json
 from pathlib import Path
 
 
-SCHEMA_VERSION = 1
-MIGRATIONS = {}
+SCHEMA_VERSION = 2
+
+
+def _migrate_v1_to_v2(config):
+    """Remove the retired Unpack All action from customized menus."""
+    def remove_from(menu):
+        retained = []
+        for item in menu.get("items", []):
+            if item.get("type") == "plugin_action" and item.get("action") == "lightmap.unpack":
+                continue
+            if item.get("type") == "submenu" and isinstance(item.get("menu"), dict):
+                remove_from(item["menu"])
+            retained.append(item)
+        menu["items"] = retained
+
+    for root in config.get("roots", {}).values():
+        if isinstance(root, dict):
+            remove_from(root)
+    config["schema_version"] = 2
+    return config
+
+
+MIGRATIONS = {1: _migrate_v1_to_v2}
 ROOT_KEYS = ("edit", "object", "no_active")
 ITEM_TYPES = ("separator", "submenu", "plugin_action", "custom_operator", "custom_property")
 

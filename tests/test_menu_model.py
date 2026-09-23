@@ -77,7 +77,7 @@ class MenuModelTests(unittest.TestCase):
         current = MODEL.clone_default()
         before = copy.deepcopy(current)
         with self.assertRaises(MODEL.MenuConfigError):
-            MODEL.loads('{"schema_version": 1, "roots": {}}')
+            MODEL.loads('{"schema_version": 2, "roots": {}}')
         self.assertEqual(current, before)
 
     def test_operator_parser_accepts_identifier_and_literal_keywords(self):
@@ -105,6 +105,25 @@ class MenuModelTests(unittest.TestCase):
         config["schema_version"] = 99
         with self.assertRaisesRegex(MODEL.MenuConfigError, "schema_version"):
             MODEL.validate_config(config)
+
+    def test_v1_migration_removes_retired_unpack_all_action(self):
+        config = MODEL.clone_default()
+        config["schema_version"] = 1
+        menu, _parents = MODEL.find_menu(config, "menu-lightmap-object")
+        menu["items"].append({
+            "id": "custom-old-unpack",
+            "type": "plugin_action",
+            "enabled": True,
+            "action": "lightmap.unpack",
+        })
+        migrated = MODEL.loads(MODEL.dumps({**config, "schema_version": 2}).replace(
+            '"schema_version": 2', '"schema_version": 1', 1))
+        actions = [
+            item.get("action")
+            for menu, _parents in MODEL.walk_menus(migrated)
+            for item in menu["items"]
+        ]
+        self.assertNotIn("lightmap.unpack", actions)
 
 
 

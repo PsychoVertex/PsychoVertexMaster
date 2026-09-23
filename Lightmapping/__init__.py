@@ -71,7 +71,7 @@ def _batch_meshes(collection: Collection) -> list[Object]:
 
 
 def _lightmap_uv_coverage(objects: list[Object], resolution: int) -> np.ndarray:
-    """Rasterize light-baked UV triangles into a pixel-center coverage mask."""
+    """Conservatively rasterize light-baked UV triangles into a coverage mask."""
     coverage = np.zeros((resolution, resolution), dtype=bool)
     for obj in objects:
         mesh = obj.data
@@ -87,35 +87,71 @@ def _lightmap_uv_coverage(objects: list[Object], resolution: int) -> np.ndarray:
             )
             if material is None or not material.light_baked:
                 continue
-            points = [uv_layer.data[index].uv for index in triangle.loops]
-            ax, ay = float(points[0].x), float(points[0].y)
-            bx, by = float(points[1].x), float(points[1].y)
-            cx, cy = float(points[2].x), float(points[2].y)
-            denominator = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy)
-            if abs(denominator) <= EPS:
+            vertices = np.array(
+                [
+                    (uv_layer.data[index].uv.x, uv_layer.data[index].uv.y)
+                    for index in triangle.loops
+                ],
+                dtype=np.float64,
+            ) * resolution
+            edge_a = vertices[1] - vertices[0]
+            edge_b = vertices[2] - vertices[0]
+            if abs(edge_a[0] * edge_b[1] - edge_a[1] * edge_b[0]) <= EPS:
                 continue
-            x0 = max(0, math.ceil(min(ax, bx, cx) * resolution - 0.5))
-            x1 = min(resolution - 1, math.floor(max(ax, bx, cx) * resolution - 0.5))
-            y0 = max(0, math.ceil(min(ay, by, cy) * resolution - 0.5))
-            y1 = min(resolution - 1, math.floor(max(ay, by, cy) * resolution - 0.5))
+            x0 = max(0, math.floor(vertices[:, 0].min()))
+            x1 = min(resolution - 1, math.floor(vertices[:, 0].max()))
+            y0 = max(0, math.floor(vertices[:, 1].min()))
+            y1 = min(resolution - 1, math.floor(vertices[:, 1].max()))
             if x0 > x1 or y0 > y1:
                 continue
-            pixel_x = (np.arange(x0, x1 + 1, dtype=np.float64) + 0.5) / resolution
+            pixel_x = np.arange(x0, x1 + 1, dtype=np.float64) + 0.5
+            edges = (
+                vertices[1] - vertices[0],
+                vertices[2] - vertices[1],
+                vertices[0] - vertices[2],
+            )
             for y in range(y0, y1 + 1):
-                pixel_y = (y + 0.5) / resolution
-                weight_a = (
-                    (by - cy) * (pixel_x - cx) + (cx - bx) * (pixel_y - cy)
-                ) / denominator
-                weight_b = (
-                    (cy - ay) * (pixel_x - cx) + (ax - cx) * (pixel_y - cy)
-                ) / denominator
-                inside = (
-                    (weight_a >= -EPS)
-                    & (weight_b >= -EPS)
-                    & ((1.0 - weight_a - weight_b) >= -EPS)
-                )
-                coverage[y, x0:x1 + 1] |= inside
+                pixel_y = y + 0.5
+                intersects = np.ones(pixel_x.shape, dtype=bool)
+                for edge in edges:
+                    normal_x, normal_y = -edge[1], edge[0]
+                    triangle_projection = (
+                        vertices[:, 0] * normal_x
+                        + vertices[:, 1] * normal_y
+                    )
+                    center_projection = pixel_x * normal_x + pixel_y * normal_y
+                    pixel_radius = 0.5 * (abs(normal_x) + abs(normal_y))
+                    intersects &= (
+                        (center_projection + pixel_radius >= triangle_projection.min() - EPS)
+                        & (center_projection - pixel_radius <= triangle_projection.max() + EPS)
+                    )
+                    if not intersects.any():
+                        break
+                coverage[y, x0:x1 + 1] |= intersects
     return coverage
+
+
+def _publish_review_image(name: str, pixels: np.ndarray) -> Image:
+    """Create or refresh an in-memory image for lightmap diagnostics."""
+    height, width, channels = pixels.shape
+    if channels != 4:
+        raise RuntimeError("Review image must contain RGBA pixels")
+    image = bpy.data.images.get(name)
+    if image is None:
+        image = bpy.data.images.new(
+            name=name,
+            width=width,
+            height=height,
+            alpha=True,
+            float_buffer=True,
+            is_data=True,
+        )
+    elif tuple(image.size) != (width, height):
+        image.scale(width, height)
+    image.colorspace_settings.name = 'Non-Color'
+    image.pixels.foreach_set(np.asarray(pixels, dtype=np.float32).ravel())
+    image.update()
+    return image
 
 
 def _matrix_to_property(matrix: Matrix) -> list[float]:
@@ -135,6 +171,21 @@ def _batch_number(collection: Collection) -> int | None:
 
 def _batch_collection_name(number: int, source_collection: Collection) -> str:
     return f"Batch{number} ({source_collection.name})"
+
+
+def _batch_source_name(batch: Collection) -> str | None:
+    source_name = batch.get(BATCH_SOURCE_COLLECTION_KEY)
+    if source_name:
+        return source_name
+    match = re.match(r"^Batch\d+\s+\((.+)\)$", batch.name)
+    return match.group(1) if match else None
+
+
+def _filler_collection_name(batch: Collection) -> str | None:
+    source_name = _batch_source_name(batch)
+    if not source_name or not source_name.startswith("S_"):
+        return None
+    return f"F_{source_name[2:]}"
 
 
 def _batch_for_source(export: Collection, source: Collection) -> Collection | None:
@@ -385,7 +436,8 @@ class ReplaceFillers(Operator):
 
     def draw(self, context):
         layout = self.layout
-        layout.label(text="Replace every collection instance under FILLERS?", icon='OUTLINER_COLLECTION')
+        layout.label(text="Replace matching instances in each FILLERS/F_X collection?", icon='OUTLINER_COLLECTION')
+        layout.label(text="F_X is paired with the generated BatchN (S_X).")
         layout.label(text="Matching uses the instanced library collection name.")
         layout.label(text="Replacements are kept outside BatchN, so they are never included in baking.", icon='INFO')
         layout.label(text="Existing FillersN collections will be replaced only after preflight succeeds.")
@@ -412,7 +464,7 @@ class ReplaceFillers(Operator):
             self.report({'ERROR'}, "No generated BatchN collection; unpack collections first")
             return {'CANCELLED'}
 
-        groups_by_asset = {}
+        groups_by_batch_asset = {}
         for batch in batches:
             batch_groups = {}
             # Realized source groups are linked directly to BatchN. Exclude prior
@@ -424,29 +476,41 @@ class ReplaceFillers(Operator):
                 if asset and group_id and relative is not None:
                     batch_groups.setdefault((asset, group_id), []).append(obj)
             for (asset, group_id), objects in batch_groups.items():
-                groups_by_asset.setdefault(asset, (batch, group_id, objects))
+                groups_by_batch_asset.setdefault(batch, {}).setdefault(
+                    asset, (group_id, objects))
 
         filler_instances = []
+        filler_layers = {}
         seen = set()
-        for obj in fillers.all_objects:
-            pointer = obj.as_pointer()
-            if pointer in seen or obj.instance_collection is None:
+        for batch in batches:
+            filler_name = _filler_collection_name(batch)
+            filler_collection = fillers.children.get(filler_name) if filler_name else None
+            if filler_collection is None:
                 continue
-            seen.add(pointer)
-            filler_instances.append(obj)
+            layer = filler_layer.children.get(filler_collection.name)
+            if layer is None:
+                self.report({'ERROR'}, f"{filler_collection.name} is not present below FILLERS in the active View Layer")
+                return {'CANCELLED'}
+            filler_layers[batch] = layer
+            for obj in filler_collection.all_objects:
+                pointer = obj.as_pointer()
+                if pointer in seen or obj.instance_collection is None:
+                    continue
+                seen.add(pointer)
+                filler_instances.append((obj, batch))
         if not filler_instances:
-            self.report({'ERROR'}, "FILLERS contains no collection-instance objects")
+            self.report({'ERROR'}, "No paired F_X collection contains collection-instance objects")
             return {'CANCELLED'}
 
         replacements = []
         unmatched = []
-        for filler in filler_instances:
+        for filler, batch in filler_instances:
             asset_name = filler.instance_collection.name
-            match = groups_by_asset.get(asset_name)
+            match = groups_by_batch_asset.get(batch, {}).get(asset_name)
             if match is None:
                 unmatched.append(f"{filler.name} ({asset_name})")
             else:
-                replacements.append((filler, *match))
+                replacements.append((filler, batch, *match))
         if not replacements:
             self.report({'ERROR'}, "No FILLERS instances match the batches currently in EXPORT_STUFF")
             return {'CANCELLED'}
@@ -458,6 +522,9 @@ class ReplaceFillers(Operator):
 
         staged = {}
         previous = {}
+        visibility_states = [(filler_layer, filler_layer.exclude)]
+        visibility_states.extend(
+            (layer, layer.exclude) for layer in filler_layers.values())
         fillers_root = export.children.get(BATCH_FILLERS_COLLECTION)
         created_fillers_root = False
         try:
@@ -495,8 +562,12 @@ class ReplaceFillers(Operator):
                     previous[batch] = old
                 stage.name = final_name
 
-            filler_layer.exclude = True
+            filler_layer.exclude = False
+            for batch in staged:
+                filler_layers[batch].exclude = True
         except Exception as ex:
+            for layer, excluded in visibility_states:
+                layer.exclude = excluded
             for stage in list(staged.values()):
                 if stage.name in bpy.data.collections:
                     DeleteCollection(stage.name)
@@ -562,7 +633,7 @@ class ClearFillerReplacements(Operator):
 
         fillers_layer = GetLayerCollection("FILLERS", context.view_layer.layer_collection)
         if fillers_layer is not None:
-            fillers_layer.exclude = False
+            _set_layer_excluded_recursive(fillers_layer, False)
 
         if not filler_collections and fillers_layer is None:
             self.report({'WARNING'}, "No generated FillersN collections or visible FILLERS collection were found")
@@ -601,6 +672,7 @@ class ClearLightmappingStuff(Operator):
         number = _batch_number(active)
         if export is not None and number is not None and export.children.get(active.name) is active:
             source_name = active.get(BATCH_SOURCE_COLLECTION_KEY)
+            filler_name = _filler_collection_name(active)
             source_layer = (
                 GetLayerCollection(source_name, context.view_layer.layer_collection)
                 if source_name else None
@@ -615,9 +687,10 @@ class ClearLightmappingStuff(Operator):
             DeleteCollection(active.name)
             if fillers_root is not None and not fillers_root.children and not fillers_root.objects:
                 bpy.data.collections.remove(fillers_root)
-                fillers_layer = GetLayerCollection("FILLERS", context.view_layer.layer_collection)
-                if fillers_layer:
-                    fillers_layer.exclude = False
+            fillers_layer = GetLayerCollection("FILLERS", context.view_layer.layer_collection)
+            filler_layer = fillers_layer.children.get(filler_name) if fillers_layer and filler_name else None
+            if filler_layer:
+                filler_layer.exclude = False
             if source_layer:
                 _set_layer_excluded_recursive(source_layer, False)
             self.report({'INFO'}, f"Cleared Batch{number} and its filler replacements")
@@ -629,7 +702,7 @@ class ClearLightmappingStuff(Operator):
                 _set_layer_excluded_recursive(source_layer, False)
         fillers_layer = GetLayerCollection("FILLERS", context.view_layer.layer_collection)
         if fillers_layer:
-            fillers_layer.exclude = False
+            _set_layer_excluded_recursive(fillers_layer, False)
         DeleteCollection("EXPORT_STUFF")
         DeleteCollection("TEMP_EXPORT_STUFF")
         ReleaseTempActiveObjByName()
@@ -662,9 +735,9 @@ class BakeBatch(PipelineOperator):
     bl_options = {'REGISTER', "UNDO", "UNDO_GROUPED"}
 
     render_resolution: IntProperty(name="Render Resolution", default=4096, min=1)
-    samples: IntProperty(name="Samples", default=64, min=1)
+    samples: IntProperty(name="Samples", default=128, min=1)
     margin: IntProperty(name="Margin", default=0, min=0)
-    use_adaptive_sampling: BoolProperty(name="Adaptive Sampling", default=True)
+    use_adaptive_sampling: BoolProperty(name="Adaptive Sampling", default=False)
     adaptive_threshold: FloatProperty(
         name="Noise Threshold", default=0.01, min=0.0, max=1.0, precision=4
     )
@@ -677,11 +750,11 @@ class BakeBatch(PipelineOperator):
     filter_glossy: FloatProperty(
         name="Filter Glossy", description="Blur glossy paths to reduce fireflies", default=1.0, min=0.0
     )
-    max_bounces: IntProperty(name="Max Bounces", default=12, min=0, max=1024)
-    diffuse_bounces: IntProperty(name="Diffuse Bounces", default=4, min=0, max=1024)
-    glossy_bounces: IntProperty(name="Glossy Bounces", default=4, min=0, max=1024)
-    transmission_bounces: IntProperty(name="Transmission Bounces", default=8, min=0, max=1024)
-    transparent_bounces: IntProperty(name="Transparent Bounces", default=8, min=0, max=1024)
+    max_bounces: IntProperty(name="Max Bounces", default=6, min=0, max=1024)
+    diffuse_bounces: IntProperty(name="Diffuse Bounces", default=6, min=0, max=1024)
+    glossy_bounces: IntProperty(name="Glossy Bounces", default=2, min=0, max=1024)
+    transmission_bounces: IntProperty(name="Transmission Bounces", default=0, min=0, max=1024)
+    transparent_bounces: IntProperty(name="Transparent Bounces", default=6, min=0, max=1024)
     light_sampling_threshold: FloatProperty(
         name="Light Threshold",
         description="Lower values sample weaker emissive lights; 0 samples all lights",
@@ -744,7 +817,7 @@ class BakeBatch(PipelineOperator):
     def validate(self, context: Context):
         export = bpy.data.collections.get('EXPORT_STUFF')
         if export is None:
-            self.report({'ERROR'}, "No EXPORT_STUFF collection; run Unpack Collections first")
+            self.report({'ERROR'}, "No EXPORT_STUFF collection; run Unpack Active first")
             return False
         batch_collection = context.view_layer.active_layer_collection.collection
         batch_number = _batch_number(batch_collection)
@@ -1301,6 +1374,7 @@ class BakeBatch(PipelineOperator):
                     if img_node:
                         self._original_lightmap_node_images.setdefault(img_node, img_node.image)
                         img_node.image = self.lightmap_image
+                        img_node.interpolation = 'Closest'
                         img_node.select = True
                         nodes.active = img_node
                         self.img_nodes.append(img_node)
@@ -1311,6 +1385,7 @@ class BakeBatch(PipelineOperator):
                         img_node = cast(ShaderNodeTexImage, nodes.new(type="ShaderNodeTexImage"))
                         img_node.name = img_node.label = "LightMapImageNode"
                         img_node.image = self.lightmap_image
+                        img_node.interpolation = 'Closest'
                         img_node.location = (-500, 500)
                         links.new(uv_node.outputs["UV"], img_node.inputs["Vector"])
                         img_node.select = True
@@ -1554,8 +1629,9 @@ class DenoiseBatch(PipelineOperator):
         default='BEFORE_DOWNSAMPLING',
     )
     margin_mode: EnumProperty(
-        name="Dilation Order",
+        name="Margin Handling",
         items=(
+            ('NONE', "None (Bake Margins)", "Keep the original baked margins without rebuilding them"),
             ('INCLUDE', "Include", "Dilate the noisy texture before denoising"),
             ('EXCLUDE', "Exclude", "Denoise island texels, then dilate the final texture"),
         ),
@@ -1585,12 +1661,15 @@ class DenoiseBatch(PipelineOperator):
         layout.prop(self, "denoiser_step")
         margin_box = layout.box()
         margin_box.label(text="Margin", icon='MOD_EXPLODE')
-        margin_box.prop(self, "margin_mode", expand=True)
-        margin_box.prop(self, "margin")
+        margin_box.prop(self, "margin_mode")
+        if self.margin_mode != 'NONE':
+            margin_box.prop(self, "margin")
         if self.margin_mode == 'INCLUDE':
             margin_box.label(text="Dilate noisy pixels before denoising.", icon='INFO')
-        else:
+        elif self.margin_mode == 'EXCLUDE':
             margin_box.label(text="Denoise island pixels, then dilate the result.", icon='INFO')
+        else:
+            margin_box.label(text="Keep Blender's baked margins without rebuilding them.", icon='INFO')
         prefs = Preferences.get()
         if self.denoiser == 'LIGHTMAP_OIDN':
             path = Preferences.get_oidn_path(prefs)
@@ -1681,16 +1760,30 @@ class DenoiseBatch(PipelineOperator):
         pixels = np.empty(width * height * 4, dtype=np.float32)
         self._noisy_image.pixels.foreach_get(pixels)
         pixels = pixels.reshape((height, width, 4))
-        pixels = crop_pixels_to_mask(pixels, self._coverage_mask(width))
+        if self.margin_mode != 'NONE':
+            coverage = self._coverage_mask(width)
+            pixels = crop_pixels_to_mask(pixels, coverage)
+        if self.margin_mode == 'EXCLUDE':
+            batch_number = _batch_number(self.batch_collection)
+            mask_pixels = np.zeros((height, width, 4), dtype=np.float32)
+            mask_pixels[:, :, :3] = coverage[:, :, None]
+            mask_pixels[:, :, 3] = 1.0
+            _publish_review_image(
+                f"LM_B{batch_number}_UV_Coverage_{width}", mask_pixels
+            )
+            _publish_review_image(
+                f"LM_B{batch_number}_Noisy_No_Margin_{width}", pixels
+            )
         if not np.any(pixels[:, :, 3] > EPS):
             self.report({'ERROR'}, "No baked pixels overlap the current light-baked LightMap UV faces")
             return {'CANCELLED'}
         if self.denoiser_step == 'AFTER_DOWNSAMPLING':
             pixels = downsample_premultiplied(pixels, self.final_resolution)
             self.render_resolution = self.final_resolution
-            pixels = crop_pixels_to_mask(
-                pixels, self._coverage_mask(self.final_resolution)
-            )
+            if self.margin_mode != 'NONE':
+                pixels = crop_pixels_to_mask(
+                    pixels, self._coverage_mask(self.final_resolution)
+                )
             if not np.any(pixels[:, :, 3] > EPS):
                 self.report({'ERROR'}, "No LightMap UV coverage remains at the final resolution")
                 return {'CANCELLED'}
@@ -1854,24 +1947,24 @@ class RepackActiveBatch(PipelineOperator):
     uvMargin: IntProperty(
         name="UV Margin",
         description="Packing margin measured in pixels at the texture resolution",
-        default=4,
+        default=8,
         min=0,
     )
     textureSize: IntProperty(
         name="Texture Resolution",
         description="Target resolution used for pixel margins and pixel-perfect alignment",
-        default=1024,
-        min=1,
+        default=4096,
+        min=16,
     )
     pixelPerfect: BoolProperty(
         name="Pixel-Perfect Packing",
         description="Align packed island bounds to the target texture-resolution grid",
-        default=False,
+        default=True,
     )
     heuristicDuration: IntProperty(
         name="Heuristic Duration",
         description="Seconds UVPackmaster spends searching for a better layout",
-        default=1,
+        default=10,
         min=1,
         max=3600,
     )
@@ -1977,21 +2070,19 @@ class RepackActiveBatch(PipelineOperator):
         return False
 
 
-class UnpackCollections(PipelineOperator):
-    bl_idname = "lightmap.unpack_collections"
-    bl_label = "Unpack Collections to Batches"
-    bl_options = {'REGISTER', "UNDO", "UNDO_GROUPED"}
+class _UnpackBase(PipelineOperator):
+    """Shared implementation for active-collection unpacking."""
 
     uvMargin: IntProperty(
         name="UV Margin",
         description="Packing margin measured in pixels at the texture resolution",
-        default=4,
+        default=8,
         min=0,
     )
     textureSize: IntProperty(
         name="Texture Resolution",
         description="Target resolution used for pixel margins and pixel-perfect alignment",
-        default=1024,
+        default=4096,
         min=1,
     )
     packLightmaps: BoolProperty(
@@ -2002,12 +2093,12 @@ class UnpackCollections(PipelineOperator):
     pixelPerfect: BoolProperty(
         name="Pixel-Perfect Packing",
         description="Align packed island bounds to the target texture-resolution grid",
-        default=False,
+        default=True,
     )
     heuristicDuration: IntProperty(
         name="Heuristic Duration",
         description="Seconds UVPackmaster spends searching for a better layout for each batch",
-        default=1,
+        default=10,
         min=1,
         max=3600,
     )
@@ -2522,6 +2613,12 @@ class UnpackCollections(PipelineOperator):
         self.set_pipeline_detail("Queued generated objects", 0, len(self._prepare_jobs))
 
     def _prepare_object_transactionally(self, context: Context, obj: Object):
+        if obj.type == 'LIGHT':
+            # Applying object scale is unsupported for light datablocks. Keep the
+            # duplicated light transform intact; its data already carries the
+            # actual point/spot/area-light settings.
+            return
+
         determinant = obj.matrix_world.to_3x3().determinant()
         if abs(determinant) <= EPS:
             raise RuntimeError("effective world scale has a zero axis")
@@ -2725,15 +2822,16 @@ class UnpackCollections(PipelineOperator):
         self.report({'INFO'}, "Partial new batches were removed; existing batches were preserved")
 
 
-class UnpackActiveCollection(UnpackCollections):
+class UnpackActiveCollection(_UnpackBase):
     bl_idname = "lightmap.unpack_active_collection"
     bl_label = "Unpack Active Collection"
     bl_description = "Create or replace the batch for the active direct child of SOURCE"
+    bl_options = {'REGISTER', "UNDO", "UNDO_GROUPED"}
 
     uvMargin: IntProperty(
         name="UV Margin",
         description="Packing margin measured in pixels at the texture resolution",
-        default=4,
+        default=8,
         min=0,
     )
     packLightmaps: BoolProperty(
@@ -2744,12 +2842,12 @@ class UnpackActiveCollection(UnpackCollections):
     pixelPerfect: BoolProperty(
         name="Pixel-Perfect Packing",
         description="Align packed island bounds to the target texture-resolution grid",
-        default=False,
+        default=True,
     )
     heuristicDuration: IntProperty(
         name="Heuristic Duration",
         description="Seconds UVPackmaster spends searching for a better layout",
-        default=1,
+        default=10,
         min=1,
         max=3600,
     )
@@ -2917,7 +3015,7 @@ class SetLightmapScaleOperator(Operator):
     bl_description = "Sets the lightmap scale after normalization for the currently selected faces"
     bl_options = {'REGISTER', 'UNDO', 'UNDO_GROUPED'}
 
-    scale: bpy.props.FloatProperty(name="Size", min=0, max=1, default=1)
+    scale: bpy.props.FloatProperty(name="Size", min=0, max=5, default=1)
 
     @classmethod
     def poll(cls, context: Context) -> bool:
@@ -2958,6 +3056,86 @@ class SetLightmapScaleOperator(Operator):
             self.report({'WARNING'}, "No mesh faces were selected")
             return {'CANCELLED'}
         self.report({'INFO'}, f"Set lightmap scale to {self.scale:g} on {changed_faces} face(s)")
+        return {'FINISHED'}
+
+
+class SelectSmallMeshIslands(Operator):
+    bl_idname = "lightmap.select_small_mesh_islands"
+    bl_label = "Select Small Mesh Islands"
+    bl_description = "Select connected mesh islands smaller than the specified world-space area"
+    bl_options = {'REGISTER', 'UNDO', 'UNDO_GROUPED'}
+
+    max_surface_area: FloatProperty(
+        name="Maximum Surface Area (m²)", default=1.0, min=0.0, precision=4,
+    )
+
+    @classmethod
+    def poll(cls, context: Context) -> bool:
+        active = context.active_object
+        return active is not None and active.type == 'MESH' and active.mode == 'EDIT'
+
+    def invoke(self, context: Context, event):
+        Preferences.load_dialog_settings(self, ("max_surface_area",))
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context: Context):
+        self.layout.prop(self, "max_surface_area")
+
+    @staticmethod
+    def _world_face_area(face, matrix: Matrix) -> float:
+        loops = list(face.loops)
+        if len(loops) < 3:
+            return 0.0
+        origin = matrix @ loops[0].vert.co
+        return sum(
+            ((matrix @ loops[index].vert.co - origin).cross(
+                matrix @ loops[index + 1].vert.co - origin
+            )).length * 0.5
+            for index in range(1, len(loops) - 1)
+        )
+
+    def execute(self, context: Context):
+        Preferences.save_dialog_settings(self, ("max_surface_area",))
+        meter_scale = context.scene.unit_settings.scale_length
+        selected_islands = 0
+        selected_faces = 0
+
+        for obj in context.objects_in_mode:
+            if obj.type != 'MESH':
+                continue
+            bm = bmesh.from_edit_mesh(obj.data)
+            visited = set()
+            islands = []
+            for face in bm.faces:
+                if face in visited:
+                    continue
+                island = []
+                pending = [face]
+                visited.add(face)
+                while pending:
+                    current = pending.pop()
+                    island.append(current)
+                    for edge in current.edges:
+                        for linked_face in edge.link_faces:
+                            if linked_face not in visited:
+                                visited.add(linked_face)
+                                pending.append(linked_face)
+                islands.append(island)
+
+            for island in islands:
+                area = sum(self._world_face_area(face, obj.matrix_world) for face in island)
+                is_small = area * meter_scale * meter_scale < self.max_surface_area
+                for face in island:
+                    face.select_set(is_small)
+                if is_small:
+                    selected_islands += 1
+                    selected_faces += len(island)
+            bmesh.update_edit_mesh(obj.data, loop_triangles=False, destructive=False)
+
+        if selected_islands == 0:
+            self.report({'INFO'}, f"No mesh islands are smaller than {self.max_surface_area:g} m²")
+        else:
+            self.report({'INFO'}, f"Selected {selected_islands} island(s), {selected_faces} face(s) below {self.max_surface_area:g} m²")
         return {'FINISHED'}
 
 
@@ -3012,10 +3190,10 @@ def InitDisplayLighting(dummy):
 
 
 def register():
+    bpy.utils.register_class(SelectSmallMeshIslands)
     bpy.utils.register_class(SetLightmapScaleOperator)
     bpy.utils.register_class(ScaledUVPacking)
     bpy.utils.register_class(RepackActiveBatch)
-    bpy.utils.register_class(UnpackCollections)
     bpy.utils.register_class(UnpackActiveCollection)
     bpy.utils.register_class(BakeBatch)
     bpy.utils.register_class(DenoiseBatch)
@@ -3040,10 +3218,10 @@ def unregister():
     bpy.utils.unregister_class(DenoiseBatch)
     bpy.utils.unregister_class(BakeBatch)
     bpy.utils.unregister_class(UnpackActiveCollection)
-    bpy.utils.unregister_class(UnpackCollections)
     bpy.utils.unregister_class(RepackActiveBatch)
     bpy.utils.unregister_class(ScaledUVPacking)
     bpy.utils.unregister_class(SetLightmapScaleOperator)
+    bpy.utils.unregister_class(SelectSmallMeshIslands)
 
     del bpy.types.Material.light_baked
     del bpy.types.Material.passthrough

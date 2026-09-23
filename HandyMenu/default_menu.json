@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "roots": {
     "edit": {
       "id": "root-edit",
@@ -52,6 +52,7 @@
         ]}},
         {"id":"edit-lightmap","type":"submenu","enabled":true,"label":"Lightmapping","icon":"LIGHT","menu":{"id":"menu-lightmap-edit","label":"Lightmapping","items":[
           {"id":"lm-scale","type":"plugin_action","enabled":true,"action":"lightmap.scale"},
+          {"id":"lm-select-small-islands","type":"plugin_action","enabled":true,"action":"lightmap.select_small_islands"},
           {"id":"lm-pack","type":"plugin_action","enabled":true,"action":"lightmap.pack"}
         ]}},
         {"id":"edit-collision","type":"submenu","enabled":true,"label":"Collision","icon":"META_CAPSULE","menu":{"id":"menu-collision-edit","label":"Collision","items":[
@@ -86,7 +87,6 @@
           {"id":"export-batch","type":"plugin_action","enabled":true,"action":"export.batch"}
         ]}},
         {"id":"object-lightmap","type":"submenu","enabled":true,"label":"Lightmapping","icon":"LIGHT","menu":{"id":"menu-lightmap-object","label":"Lightmapping","items":[
-          {"id":"lm-unpack","type":"plugin_action","enabled":true,"action":"lightmap.unpack"},
           {"id":"lm-clear","type":"plugin_action","enabled":true,"action":"lightmap.clear"},
           {"id":"lm-bake","type":"plugin_action","enabled":true,"action":"lightmap.bake"},
           {"id":"lm-denoise","type":"plugin_action","enabled":true,"action":"lightmap.denoise"},
@@ -136,7 +136,6 @@
           {"id":"no-export-fbx","type":"custom_operator","enabled":true,"label":"Export FBX","icon":"EXPORT","operator_id":"export_scene.fbx","properties":{}}
         ]}},
         {"id":"no-lightmap","type":"submenu","enabled":true,"label":"Lightmapping","icon":"LIGHT","menu":{"id":"menu-lightmap-no-active","label":"Lightmapping","items":[
-          {"id":"no-lm-unpack","type":"plugin_action","enabled":true,"action":"lightmap.unpack"},
           {"id":"no-lm-clear","type":"plugin_action","enabled":true,"action":"lightmap.clear"},
           {"id":"no-lm-bake","type":"plugin_action","enabled":true,"action":"lightmap.bake"},
           {"id":"no-lm-denoise","type":"plugin_action","enabled":true,"action":"lightmap.denoise"},

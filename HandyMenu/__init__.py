@@ -65,6 +65,40 @@ class MZageHandyMenuSetWeight(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class MZageHandyMenuToggleProperty(bpy.types.Operator):
+    bl_idname = "wm.mzage_handy_menu_toggle_property"
+    bl_label = "Toggle Property"
+    bl_options = {"INTERNAL"}
+
+    property_path: StringProperty(options={"HIDDEN"})
+    action_id: StringProperty(options={"HIDDEN"})
+    property_index: IntProperty(default=-1, options={"HIDDEN"})
+
+    def execute(self, context):
+        try:
+            if self.action_id:
+                _label, _icon, owner_getter, prop_name, check = PROPERTY_ACTIONS[self.action_id]
+                if check and not check(context):
+                    raise AttributeError("Property is unavailable in this context")
+                owner = owner_getter(context)
+                prop_index = None
+            else:
+                owner, prop_name, prop_index = _resolve_property_path(
+                    self.property_path, context)
+                if self.property_index >= 0:
+                    prop_index = self.property_index
+
+            if prop_index is None:
+                setattr(owner, prop_name, not getattr(owner, prop_name))
+            else:
+                values = getattr(owner, prop_name)
+                values[prop_index] = not values[prop_index]
+        except (AttributeError, KeyError, TypeError, ValueError) as exc:
+            self.report({"ERROR"}, f"Could not toggle property: {exc}")
+            return {"CANCELLED"}
+        return {"FINISHED"}
+
+
 def _op(label, icon, operator_id, properties=None, available=None):
     return {"label": label, "icon": icon, "operator": operator_id,
             "properties": properties or {}, "available": available}
@@ -98,8 +132,8 @@ ACTION_CATALOG = {
     "vcolor.paint": _op("Vertex Color HSV Paint", "BRUSH_DATA", "mesh.vertex_color_hsv_paint"),
     "vcolor.select": _op("Select Same Vertex Color", "COLOR", "mesh.select_same_vertex_color"),
     "lightmap.scale": _op("Set Lightmap Scale", "FIXED_SIZE", "lightmap.set_scale"),
+    "lightmap.select_small_islands": _op("Select Small Mesh Islands", "SELECT_EXTEND", "lightmap.select_small_mesh_islands"),
     "lightmap.pack": _op("Scaled UV Packing", "UV", "lightmap.scaled_uv_packing"),
-    "lightmap.unpack": _op("Unpack All", "ACTION", "lightmap.unpack_collections"),
     "lightmap.clear": _op("Clear", "REMOVE", "lightmap.clear_lightmapping_stuff"),
     "lightmap.bake": _op("Bake", "LIGHT_DATA", "lightmap.bake_batch"),
     "lightmap.denoise": _op("Denoise", "IMAGE_DATA", "lightmap.denoise_batch"),
@@ -177,7 +211,16 @@ def _draw_action(layout, item, context, pie=False):
                 text = ""
             else:
                 text = label
-            layout.prop(owner, prop_name, text=text, icon=icon)
+            if pie:
+                button = layout.operator(
+                    MZageHandyMenuToggleProperty.bl_idname,
+                    text=text,
+                    icon=icon,
+                    depress=bool(getattr(owner, prop_name)),
+                )
+                button.action_id = action_id
+            else:
+                layout.prop(owner, prop_name, text=text, icon=icon)
         else:
             layout.separator()
         return
@@ -269,6 +312,18 @@ def _draw_menu(layout, menu, context, pie):
                 owner, prop_name, prop_index = _resolve_property_path(
                     item["property_path"], context)
                 property_text = "" if label.strip().upper() == "HIDDEN" else label
+                property_value = (getattr(owner, prop_name) if prop_index is None
+                                  else getattr(owner, prop_name)[prop_index])
+                if pie and isinstance(property_value, bool):
+                    button = item_layout.operator(
+                        MZageHandyMenuToggleProperty.bl_idname,
+                        text=property_text,
+                        icon=icon,
+                        depress=property_value,
+                    )
+                    button.property_path = item["property_path"]
+                    button.property_index = -1 if prop_index is None else prop_index
+                    continue
                 property_layout = item_layout.row(align=True)
                 if not pie and prop_index is None:
                     try:
@@ -334,6 +389,7 @@ def new_id(prefix):
 classes = (
     MZageHandyMenuSelectWeight,
     MZageHandyMenuSetWeight,
+    MZageHandyMenuToggleProperty,
     MZageHandyMenu,
 )
 

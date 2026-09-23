@@ -316,6 +316,7 @@ def _draw_menu_preferences(layout, prefs):
     header.operator("pvm.menu_import", text="Import", icon="IMPORT")
     header.operator("pvm.menu_export", text="Export", icon="EXPORT")
     header.operator("pvm.menu_reset", text="Reset", icon="FILE_REFRESH")
+    header.operator("pvm.menu_set_default", text="Set as Default", icon="FILE_TICK")
     box.prop(prefs, "mode")
     config = get_menu_config(prefs)
     menu, parents = _current_menu(prefs, config)
@@ -652,6 +653,27 @@ class PVM_OT_MenuReset(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class PVM_OT_MenuSetDefault(bpy.types.Operator):
+    bl_idname = "pvm.menu_set_default"
+    bl_label = "Set Current Menu as Add-on Default"
+    bl_description = "Overwrite the add-on's shipped default menu configuration (development use)"
+    bl_options = {"INTERNAL"}
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_confirm(self, event)
+
+    def execute(self, context):
+        destination = ADDON_DIR / "HandyMenu" / "default_menu.json"
+        try:
+            serialized = _model().dumps(get_menu_config()) + "\n"
+            destination.write_text(serialized, encoding="utf-8")
+        except (OSError, _model().MenuConfigError) as exc:
+            self.report({"ERROR"}, f"Could not set menu default: {exc}")
+            return {"CANCELLED"}
+        self.report({"INFO"}, "Current menu configuration saved as the add-on default")
+        return {"FINISHED"}
+
+
 class PVM_OT_MenuImport(bpy.types.Operator, ImportHelper):
     bl_idname = "pvm.menu_import"
     bl_label = "Import Menu Configuration"
@@ -729,7 +751,8 @@ classes = (PV_Preferences, PVM_OT_DownloadDenoiser,
            PVM_OT_MenuNavigate, PVM_OT_MenuSelect, PVM_OT_MenuToggle,
            PVM_OT_MenuMove, PVM_OT_MenuAdd, PVM_OT_MenuRemove, PVM_OT_MenuChooseIcon,
            PVM_OT_MenuSetIcon, PVM_OT_MenuEdit,
-           PVM_OT_MenuReset, PVM_OT_MenuImport, PVM_OT_MenuExport)
+           PVM_OT_MenuReset, PVM_OT_MenuSetDefault,
+           PVM_OT_MenuImport, PVM_OT_MenuExport)
 
 
 def register():
@@ -742,7 +765,8 @@ def register():
         if prefs:
             if prefs.menu_config:
                 try:
-                    _model().loads(prefs.menu_config)
+                    config = _model().loads(prefs.menu_config)
+                    prefs.menu_config = _model().dumps(config)
                 except _model().MenuConfigError:
                     prefs.menu_config_recovery = prefs.menu_config
                     prefs.menu_config = _default_json()

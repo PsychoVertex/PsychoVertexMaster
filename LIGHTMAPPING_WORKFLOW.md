@@ -43,7 +43,7 @@ Collision objects beginning with `UBX_`, `UCX_`, `UCP_`, or `USP_` are preserved
 
 Press <kbd>D</kbd> or <kbd>W</kbd> in the 3D View and open **Lightmapping**:
 
-- Edit Mode contains **Set Lightmap Scale** and **Scaled UV Packing**.
+- Edit Mode contains **Set Lightmap Scale**, **Select Small Mesh Islands**, and **Scaled UV Packing**.
 - Object Mode and the no-active-object menu contain batch generation, repacking, baking, denoising, filler replacement/restoration, and cleanup.
 - Material roles are under **Material Properties → Light Baking**.
 - Existing batches are targeted through the active generated collection in the Outliner; selecting a contained object is insufficient.
@@ -54,11 +54,13 @@ Create one top-level collection named exactly `SOURCE`. Each direct child is tre
 
 For example, `SOURCE/Building` and `SOURCE/Props` become different lightmaps. Nested collections are allowed, but only direct children of `SOURCE` define batch boundaries.
 
-The workflow can realize collection instances, duplicate ordinary object hierarchies, preserve useful parent empties and lights, retain collision helpers, apply generated-object modifiers, normalize scale, and correct mirrored mesh normals. The original source hierarchy remains available and is excluded after successful generation.
+The workflow can realize collection instances, duplicate ordinary object hierarchies, preserve useful parent empties and lights, retain collision helpers, apply generated-object modifiers, normalize geometry scale, preserve light transforms without applying unsupported scale operations to light datablocks, and correct mirrored mesh normals. The original source hierarchy remains available and is excluded after successful generation.
 
 ## 2. Prepare receiver meshes
 
 Every mesh that receives baked lighting needs a UV layer named `LightMap`. Other UV layers may remain on the object.
+
+**Select Small Mesh Islands** selects every connected mesh island whose world-space surface area is below the supplied square-metre limit. It replaces the current face selection, including in multi-object Edit Mode. Use it before **Set Lightmap Scale** to raise the UV density of small islands.
 
 In Edit Mode, use **Set Lightmap Scale** to write the per-face float value `lightmap_scale`:
 
@@ -83,7 +85,7 @@ The preparation and restoration process preserves material-slot order. Empty slo
 
 ## 4. Generate and pack batches
 
-Run **Unpack Collections** to process missing direct children of `SOURCE`. Existing batches created by the active workflow are preserved and skipped.
+Make a direct child of `SOURCE` active in the Outliner, then run **Unpack Active**. It creates or replaces only that source collection's batch while preserving unrelated batches.
 
 Important controls include:
 
@@ -153,6 +155,7 @@ Downsampling uses premultiplied filtering to avoid color bleeding from transpare
 
 ### Margin behavior
 
+- **None (Bake Margins)** keeps the original Blender bake margins. It does not crop to UV coverage or apply dilation.
 - **Exclude margin from denoising** denoises island texels first, then dilates the clean result. This is the default.
 - **Include margin in denoising** dilates noisy pixels first so gutters participate in denoising.
 
@@ -185,7 +188,7 @@ If a custom preference path is blank, the add-on checks its local `denoisers` in
 
 ## 7. Replace repeated fillers
 
-An optional top-level `FILLERS` collection may contain collection instances used to place repeated prepared assets.
+An optional top-level `FILLERS` collection may contain collection instances used to place repeated prepared assets. Organize its direct children by source batch: `F_X` corresponds to `S_X` and its generated `BatchN (S_X)`.
 
 Run **Replace Fillers** before or after baking. The operator recursively matches each filler instance by its instanced collection name, but processes only assets represented by current batches in `EXPORT_STUFF`. It duplicates the matching prepared hierarchy into:
 
@@ -193,7 +196,7 @@ Run **Replace Fillers** before or after baking. The operator recursively matches
 EXPORT_STUFF/BATCH_FILLERS/FillersN
 ```
 
-The filler instance's unapplied placement transform is preserved for later Unreal layout. Replacements remain outside `BatchN`, so future bakes do not include them. One source library collection may contain multiple objects. Unmatched filler instances are skipped, and a failed preflight changes nothing.
+The filler instance's unapplied placement transform is preserved for later Unreal layout. Replacements remain outside `BatchN`, so future bakes do not include them. Only the paired `F_X` collection is hidden after its `FillersN` replacement succeeds; the `FILLERS` root and unrelated filler collections remain visible. One source library collection may contain multiple objects. Unmatched filler instances are skipped, and a failed preflight changes nothing.
 
 Run **Clear Filler Replacements** to remove `BATCH_FILLERS` and reveal the original `FILLERS` collection. Batches, UVs, materials, and baked lightmaps are preserved.
 
