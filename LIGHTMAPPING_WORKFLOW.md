@@ -196,15 +196,33 @@ Make the generated `BatchN (S_X)` active, then run **Replace Fillers** before or
 EXPORT_STUFF/BATCH_FILLERS/FillersN
 ```
 
-The filler instance's unapplied placement transform is preserved for later Unreal layout. Replacements remain outside `BatchN`, so future bakes do not include them. Only the paired `F_X` collection is hidden after its `FillersN` replacement succeeds; the `FILLERS` root, unrelated filler collections, and existing `BATCH_FILLERS/FillersN` collections for other batches remain unchanged. One source library collection may contain multiple objects. Unmatched filler instances are skipped, and a failed preflight changes nothing.
+The filler instance's unapplied placement transform and a distinct occurrence identity are preserved for later Unreal layout, including coincident placements. Replacements remain outside `BatchN`, so future bakes do not include them. Only the paired `F_X` collection is hidden after its `FillersN` replacement succeeds; the `FILLERS` root, unrelated filler collections, and existing `BATCH_FILLERS/FillersN` collections for other batches remain unchanged. One source library collection may contain multiple objects. Unmatched filler instances are skipped, and a failed preflight changes nothing.
 
 Run **Clear Filler Replacements** to remove `BATCH_FILLERS` and reveal the original `FILLERS` collection. Batches, UVs, materials, and baked lightmaps are preserved.
 
-## 8. Preview lighting
+## 8. Export and reconstruct in Unreal Engine
+
+Run **Export Unreal Scene** and choose an existing writable folder in its dialog. The `.blend` must be saved. Every realized top-level occurrence in a prepared `EXPORT_STUFF/BatchN` is an independent canonical Static Mesh asset, even when several occurrences originated from the same `instance_collection`; this preserves occurrence-specific prepared geometry, materials, and baked data. Its generated anchor supplies both the FBX pivot and canonical JSON transform. Only collection-instance objects inside the batch's paired `FILLERS/F_X` collection become repeated filler placements. A filler is mapped by its `instance_collection` name to one deterministic prepared occurrence from that batch. Filler evaluated `matrix_world` values are authoritative; the exporter temporarily evaluates excluded `F_X` layer paths and restores their exclusion state immediately afterward. `SOURCE` and generated `BATCH_FILLERS` copies are not placement authorities. Invalid placement transforms, naming collisions, incomplete batches, and missing generated placements still cancel.
+
+Export runs as a cancellable modal pipeline, shows per-asset progress in Blender's header, and displays a completion notification after publishing. Enable **Preview Static Meshes** to write no files and instead select the exact prepared mesh and collision objects that would be included in the FBXs; it is off by default and takes precedence over JSON-only mode. Enable **Export Scene Json Only** to update `PVMScene.json` without re-exporting or replacing any existing FBX; it is also off by default. Export uses temporary copies and restores Blender selection, active object, mode, and scene data except when preview intentionally leaves the resulting selection active. It cancels before publishing when names collide, a batch is incomplete, repeated geometry is inconsistent, or a transform contains zero scale or shear that Unreal cannot reproduce.
+
+For Unreal Engine 5.6:
+
+1. Copy `Unreal/PsychoVertexSceneReconstructor` into the Unreal project's `Plugins` folder and compile the Editor target.
+2. Manually import every FBX with scene-unit conversion and custom collision enabled. Keep the generated `SM_*` names and configure Static Meshes/materials yourself.
+3. Open the target level and choose **Window → PsychoVertex Scene Reconstructor**.
+4. Select the `/Game` folder containing those meshes, choose `PVMScene.json`, and validate.
+5. Reconstruct the current level. Repeated runs replace only actors tagged with the same reconstruction ID and remain undoable as one editor transaction.
+
+Use **Delete PVM Folder Actors** to remove every actor in the `PVM` Outliner folder and its child folders. The plugin confirms the actor count first and records the deletion as one undoable editor transaction.
+
+The plugin searches recursively below the selected Content Browser folder, requires exactly one Static Mesh for every exported name, and never imports assets or changes materials.
+
+## 9. Preview lighting
 
 Use **Display Lighting** to toggle generated material inputs named `LightingMode`. This lets you switch the prepared materials' lighting presentation without changing the baked files.
 
-## 9. Cleanup
+## 10. Cleanup
 
 Run **Clear Lightmapping Stuff** carefully:
 

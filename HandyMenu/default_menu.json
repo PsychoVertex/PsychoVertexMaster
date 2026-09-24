@@ -556,9 +556,10 @@
             "label": "Lightmapping",
             "items": [
               {
-                "id": "item-1a0bb12f5c65",
-                "type": "separator",
-                "enabled": true
+                "id": "lm-unpack-active",
+                "type": "plugin_action",
+                "enabled": true,
+                "action": "lightmap.unpack_active"
               },
               {
                 "id": "lm-clear",
@@ -591,16 +592,16 @@
                 "action": "lightmap.replace_fillers"
               },
               {
-                "id": "lm-unpack-active",
-                "type": "plugin_action",
-                "enabled": true,
-                "action": "lightmap.unpack_active"
-              },
-              {
                 "id": "lm-repack-active",
                 "type": "plugin_action",
                 "enabled": true,
                 "action": "lightmap.repack_active"
+              },
+              {
+                "id": "lm-export-unreal",
+                "type": "plugin_action",
+                "enabled": true,
+                "action": "lightmap.export_unreal"
               }
             ]
           }
@@ -853,11 +854,6 @@
             "label": "Lightmapping",
             "items": [
               {
-                "id": "item-fefefa8c3d10",
-                "type": "separator",
-                "enabled": true
-              },
-              {
                 "id": "no-lm-clear",
                 "type": "plugin_action",
                 "enabled": true,
@@ -898,6 +894,12 @@
                 "type": "plugin_action",
                 "enabled": true,
                 "action": "lightmap.repack_active"
+              },
+              {
+                "id": "no-lm-export-unreal",
+                "type": "plugin_action",
+                "enabled": true,
+                "action": "lightmap.export_unreal"
               }
             ]
           }

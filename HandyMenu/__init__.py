@@ -141,6 +141,7 @@ ACTION_CATALOG = {
     "lightmap.replace_fillers": _op("Replace Fillers", "DUPLICATE", "lightmap.replace_fillers"),
     "lightmap.unpack_active": _op("Unpack Active", "OUTLINER_COLLECTION", "lightmap.unpack_active_collection"),
     "lightmap.repack_active": _op("Repack Active", "UV", "lightmap.repack_active_batch"),
+    "lightmap.export_unreal": _op("Export Unreal Scene", "EXPORT", "lightmap.export_unreal_scene"),
     "collision.box": _op("Add Box Collision", "SHADING_BBOX", "collision.add_box_collision_to_selected"),
     "collision.sphere": _op("Add Sphere Collision", "MESH_UVSPHERE", "collision.add_sphere_collision_to_selected"),
     "collision.capsule": _op("Add Capsule Collision", "META_CAPSULE", "collision.add_capsule_collision_to_selected"),

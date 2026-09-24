@@ -1,0 +1,18 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "1.0.0",
+  "FriendlyName": "PsychoVertex Scene Reconstructor",
+  "Description": "Validates a PVM scene JSON and reconstructs it from existing Static Mesh assets.",
+  "Category": "Editor",
+  "CreatedBy": "PsychoVertex",
+  "CanContainContent": false,
+  "IsBetaVersion": true,
+  "Modules": [
+    {
+      "Name": "PsychoVertexSceneReconstructor",
+      "Type": "Editor",
+      "LoadingPhase": "Default"
+    }
+  ]
+}

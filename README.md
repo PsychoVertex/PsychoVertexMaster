@@ -422,6 +422,7 @@ PsychoVertexMaster includes a batch-oriented lightmapping pipeline for preparing
 - Denoise before or after premultiplied downsampling, with controllable final-pixel margins.
 - Use Blender's integrated denoiser, Open Image Denoise, the supported OptiX executable, or no denoising.
 - Replace repeated filler instances from prepared batches without adding them to later bakes.
+- Export each prepared logical asset once as FBX plus one versioned scene-placement JSON for Unreal.
 - Preview baked lighting and clean either one generated batch or the complete generated workspace.
 
 ### Requirements
@@ -441,7 +442,8 @@ PsychoVertexMaster includes a batch-oriented lightmapping pipeline for preparing
 4. Run **Unpack Collections** to generate prepared `EXPORT_STUFF/BatchN` collections and pack their UVs.
 5. Activate a generated batch in the Outliner and run **Bake Batch**.
 6. Keep that batch active and run **Denoise Batch** to write and assign its final lightmap.
-7. Optionally replace `FILLERS`, toggle the lighting preview, then export or clean generated data.
+7. Run **Export Unreal Scene** and choose an output folder. FBX geometry and canonical placements come from `EXPORT_STUFF/BatchN`; filler placements come from each batch's paired `FILLERS/F_X` collection, so generated filler replacement is not required for scene reconstruction.
+8. Manually import/configure the FBXs in Unreal and reconstruct the open level with the bundled UE 5.6 editor plugin.
 
 See the **[complete lightmapping guide](LIGHTMAPPING_WORKFLOW.md)** for collection setup, material roles, packing controls, baking, denoising, fillers, troubleshooting, and cleanup behavior.
 

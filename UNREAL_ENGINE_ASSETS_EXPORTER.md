@@ -257,6 +257,12 @@ For meshes whose UV channel is already prepared by PsychoVertexMaster, `bfu_gene
 
 ## Current PsychoVertexMaster integration
 
+### Baked-scene reconstruction exporter
+
+PsychoVertexMaster also ships an independent baked-scene path that does not invoke BFU. `lightmap.export_unreal_scene` treats every realized top-level occurrence in `EXPORT_STUFF/BatchN` as an independent canonical Static Mesh asset and reads its prepared geometry and transform there, even when several occurrences originated from the same library collection. Only instances in the batch-paired original `FILLERS/F_X` collection become repeated filler placements; their library collection name maps them to one deterministic prepared occurrence. It writes `PVMScene.json` using schema `pvm.unreal_scene` version 1. `SOURCE` and `BATCH_FILLERS` are not authoritative export-placement sources. The companion UE 5.6 editor plugin resolves already-imported Static Meshes by exact generated name and reconstructs placements in the open level. It does not import FBXs, configure meshes, or assign materials.
+
+The placement conversion reflects Blender Y to change handedness while retaining Z-up, scales Blender distances by `100 * scene.unit_settings.scale_length`, and converts quaternion `(x,y,z,w)` to `(-x,y,-z,w)`. FBX geometry is exported in asset-pivot space with forward `-Y`, up `Z`, and FBX unit scaling enabled. Keep this FBX/JSON convention synchronized if either side changes.
+
 `HandyUtils/BlenderToUnreal.py` directly writes BFU properties. It defines four operators:
 
 | Operator | Effect |

@@ -16,6 +16,9 @@ Lightmapping/NativePostprocessor/build/
 backups/
 downloads/
 denoisers/
+Unreal/**/Binaries/
+Unreal/**/Intermediate/
+Unreal/**/Saved/
 eggs/
 .eggs/
 lib/

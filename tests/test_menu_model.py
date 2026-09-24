@@ -110,6 +110,9 @@ class MenuModelTests(unittest.TestCase):
         config = MODEL.clone_default()
         config["schema_version"] = 1
         menu, _parents = MODEL.find_menu(config, "menu-lightmap-object")
+        # Make room for the retired entry in the historical fixture; the current
+        # shipped menu intentionally uses all eight available slots.
+        next(item for item in menu["items"] if item["id"] == "lm-export-unreal")["enabled"] = False
         menu["items"].append({
             "id": "custom-old-unpack",
             "type": "plugin_action",

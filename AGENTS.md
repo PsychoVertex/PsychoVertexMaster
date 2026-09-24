@@ -67,6 +67,7 @@ Treat these names and assumptions as a file-format/API contract. If changing one
 - Generated collections are direct children under `EXPORT_STUFF`; `_batch_number()` parses the stable numeric `BatchN` prefix while the parenthesized source name is descriptive only. Output, material, and filler naming must use `_batch_number()` rather than string slicing.
 - Bake targeting is collection-based, not object-based: resolve it from `context.view_layer.active_layer_collection.collection`. It must be a generated `BatchN` directly below `EXPORT_STUFF`; object selection alone does not identify a batch.
 - Mesh data: UV layer `LightMap`; BMesh face float layer `lightmap_scale`.
+- Realized asset metadata: `pvm_filler_asset`, `pvm_filler_group`, and `pvm_filler_relative_matrix`; generated filler copies also use `pvm_asset_occurrence`. Every realized top-level occurrence in `EXPORT_STUFF/BatchN` is a distinct canonical Unreal asset, even when occurrences share `pvm_filler_asset`; that key is used only to map true instances in the batch-paired original `FILLERS/F_X` collection to one deterministic prepared source. `SOURCE` and `BATCH_FILLERS` are not placement authorities.
 - Vertex colors: passthrough materials read color attribute `Color`.
 - Material node: image node `LightMapImageNode`.
 - Shader group/interface inputs: `LightMap` and `LightingMode`.

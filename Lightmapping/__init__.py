@@ -4,8 +4,6 @@ import re
 import time
 import shutil
 import math
-import base64
-import subprocess
 from tempfile import TemporaryDirectory
 import bpy
 import bmesh
@@ -14,7 +12,7 @@ from mathutils import Matrix, Vector
 from bpy.types import Context, Operator, Object, Collection, LayerCollection, ShaderNodeTexImage, CompositorNodeImage, Material, Image, ShaderNodeVertexColor, ShaderNodeBsdfRayPortal, ShaderNodeBsdfTransparent, ShaderNodeAddShader
 from bpy.props import BoolProperty, FloatProperty, StringProperty, IntProperty, EnumProperty
 from bpy.app.handlers import persistent
-from ..Pipeline import PipelineOperator, PipelineTask
+from ..Pipeline import PipelineOperator, PipelineTask, send_windows_notification
 from .. import Preferences
 from .Denoisers import (
     DENOISER_ITEMS,
@@ -31,6 +29,7 @@ COLLISION_PREFIXES = ("UBX_", "UCX_", "UCP_", "USP_")
 FILLER_ASSET_KEY = "pvm_filler_asset"
 FILLER_GROUP_KEY = "pvm_filler_group"
 FILLER_RELATIVE_MATRIX_KEY = "pvm_filler_relative_matrix"
+FILLER_OCCURRENCE_KEY = "pvm_asset_occurrence"
 BATCH_BAKED_KEY = "pvm_lightmap_baked"
 BATCH_LIGHTMAP_KEY = "pvm_lightmap_path"
 BATCH_NOISY_LIGHTMAP_KEY = "pvm_lightmap_noisy_path"
@@ -56,34 +55,6 @@ PACK_DIALOG_SETTINGS = (
 )
 REPACK_DIALOG_SETTINGS = ("uvMargin", "textureSize", "pixelPerfect", "heuristicDuration")
 SCALED_PACK_DIALOG_SETTINGS = ("heuristic", "pixel_margin", "texture_size")
-
-
-def _send_windows_notification(title: str, message: str):
-    """Show a non-blocking Windows notification-area balloon."""
-    if os.name != "nt":
-        return
-    title = title.replace("'", "''")
-    message = message.replace("'", "''")
-    script = f"""
-    Add-Type -AssemblyName System.Windows.Forms
-    Add-Type -AssemblyName System.Drawing
-    $notification = New-Object System.Windows.Forms.NotifyIcon
-    $notification.Icon = [System.Drawing.SystemIcons]::Information
-    $notification.Visible = $true
-    $notification.ShowBalloonTip(5000, '{title}', '{message}', [System.Windows.Forms.ToolTipIcon]::Info)
-    Start-Sleep -Seconds 6
-    $notification.Dispose()
-    """
-    encoded_script = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
-    try:
-        subprocess.Popen(
-            ["powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-EncodedCommand", encoded_script],
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    except OSError:
-        pass
 
 
 def _is_bake_mesh(obj: Object) -> bool:
@@ -571,6 +542,7 @@ class ReplaceFillers(Operator):
                 copies = {}
                 for source in source_objects:
                     duplicate = source.copy()
+                    duplicate[FILLER_OCCURRENCE_KEY] = f"filler:{filler.name}"
                     target.objects.link(duplicate)
                     copies[source] = duplicate
                 for source, duplicate in copies.items():
@@ -1636,7 +1608,7 @@ class BakeBatch(PipelineOperator):
             backup.cleanup()
             self._previous_noisy_backup = None
         if not cancelled:
-            _send_windows_notification("PsychoVertexMaster", "Lightmap bake finished")
+            send_windows_notification("PsychoVertexMaster", "Lightmap bake finished")
 
 
 class DenoiseBatch(PipelineOperator):
@@ -1959,7 +1931,7 @@ class DenoiseBatch(PipelineOperator):
             backup.cleanup()
             self._previous_final_backup = None
         if not cancelled:
-            _send_windows_notification("PsychoVertexMaster", "Lightmap denoise finished")
+            send_windows_notification("PsychoVertexMaster", "Lightmap denoise finished")
 
 
 class RepackActiveBatch(PipelineOperator):
@@ -2994,7 +2966,7 @@ class UnpackActiveCollection(_UnpackBase):
         else:
             source_layer.exclude = True
         self.report({'INFO'}, f"Created {pending.name} and hid {self._requested_source.name}")
-        _send_windows_notification("PsychoVertexMaster", "Lightmap unpack finished")
+        send_windows_notification("PsychoVertexMaster", "Lightmap unpack finished")
 
 
 class ScaledUVPacking(Operator):

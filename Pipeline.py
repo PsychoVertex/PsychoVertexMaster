@@ -1,5 +1,8 @@
 import time
 import traceback
+import base64
+import os
+import subprocess
 from functools import partial
 import inspect
 from dataclasses import dataclass
@@ -10,6 +13,34 @@ from bpy.types import Operator, Context
 # Short enough for item-by-item cooperative work without adding noticeable
 # latency, while still leaving Blender time to redraw and process cancellation.
 INTERVAL = 0.02
+
+
+def send_windows_notification(title: str, message: str):
+    """Show a non-blocking Windows notification-area balloon."""
+    if os.name != "nt":
+        return
+    title = title.replace("'", "''")
+    message = message.replace("'", "''")
+    script = f"""
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    $notification = New-Object System.Windows.Forms.NotifyIcon
+    $notification.Icon = [System.Drawing.SystemIcons]::Information
+    $notification.Visible = $true
+    $notification.ShowBalloonTip(5000, '{title}', '{message}', [System.Windows.Forms.ToolTipIcon]::Info)
+    Start-Sleep -Seconds 6
+    $notification.Dispose()
+    """
+    encoded_script = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+    try:
+        subprocess.Popen(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-EncodedCommand", encoded_script],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        pass
 
 
 def ascii_progress(step, total, width=24):

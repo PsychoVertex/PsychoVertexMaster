@@ -4,6 +4,7 @@ from . import HandyUtils
 from . import UvTools
 from . import VertexColors
 from . import Lightmapping
+from . import SceneExport
 from . import AssetBrowser
 from . import Collisions
 from . import HandyMenu
@@ -26,7 +27,7 @@ bl_info = {
 keymaps = []
 
 REGISTER_MODULES = (
-    Preferences, Updater, Pipeline, HandyUtils, UvTools, VertexColors, Lightmapping,
+    Preferences, Updater, Pipeline, HandyUtils, UvTools, VertexColors, Lightmapping, SceneExport,
     AssetBrowser, Collisions, HandyMenu, ChildControl, ModifiersMenu,
     AddMaterialToSelectedFaces, CreateEmptyParent,
 )
